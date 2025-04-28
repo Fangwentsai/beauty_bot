@@ -2,11 +2,30 @@ import os
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
+import json
 
 class FirebaseService:
     def __init__(self):
-        cred = credentials.Certificate(os.getenv('FIREBASE_CREDENTIALS'))
-        firebase_admin.initialize_app(cred)
+        # 如果在 Render 環境中，使用環境變數中的憑證
+        if os.getenv('RENDER'):
+            cred = credentials.Certificate('firebase_credentials.json')
+        else:
+            # 本地開發環境使用憑證文件
+            cred = credentials.Certificate(os.getenv('FIREBASE_CREDENTIALS'))
+        
+        # Firebase 配置
+        firebase_config = {
+            "apiKey": "AIzaSyDRTa5Lnx-gSLPk9dlKXZPT4d9mvbIUQLw",
+            "authDomain": "linebot-jesse14.firebaseapp.com",
+            "projectId": "linebot-jesse14",
+            "storageBucket": "linebot-jesse14.firebasestorage.app",
+            "messagingSenderId": "630467005873",
+            "appId": "1:630467005873:web:23be48fadff9fa60404190",
+            "measurementId": "G-5E4GNXWDR6"
+        }
+        
+        # 初始化 Firebase
+        firebase_admin.initialize_app(cred, firebase_config)
         self.db = firestore.client()
 
     def get_user(self, user_id):
