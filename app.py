@@ -8,6 +8,7 @@ from services.chatgpt_service import ChatGPTService
 from services.calendar_service import GoogleCalendarService
 from services.firebase_service import FirebaseService
 from services.user_service import UserService
+import json
 
 # 載入環境變數
 load_dotenv()
@@ -15,8 +16,24 @@ load_dotenv()
 app = Flask(__name__)
 
 # Line Bot 設定
-line_bot_api = LineBotApi(os.getenv('A3vlvshjY8RHWunjEB6iaDBNJCwTvlWs2NzTnbxx6HaGdjMK0R1fE8LMujfILl4zqIvGuvaPfRSYPbIecBdGfm6gR6G1yFQFoT88TMZ4yEIQNlvosyQ133OfS/eDKtAYBIPB0ARloaEKDXHL8IV4+QdB04t89/1O/w1cDnyilFU='))
-handler = WebhookHandler(os.getenv('db9f1a6b91531c453831854db54c4e72'))
+line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
+handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
+
+# 如果在 Render 環境中，將憑證寫入臨時文件
+if os.getenv('RENDER'):
+    # Google Calendar 憑證
+    if os.getenv('GOOGLE_CALENDAR_CREDENTIALS'):
+        calendar_creds = json.loads(os.getenv('GOOGLE_CALENDAR_CREDENTIALS'))
+        with open('google_calendar_credentials.json', 'w') as f:
+            json.dump(calendar_creds, f)
+        os.environ['GOOGLE_CALENDAR_CREDENTIALS'] = 'google_calendar_credentials.json'
+    
+    # Firebase 憑證
+    if os.getenv('FIREBASE_CREDENTIALS'):
+        firebase_creds = json.loads(os.getenv('FIREBASE_CREDENTIALS'))
+        with open('firebase_credentials.json', 'w') as f:
+            json.dump(firebase_creds, f)
+        os.environ['FIREBASE_CREDENTIALS'] = 'firebase_credentials.json'
 
 # 初始化服務
 chatgpt_service = ChatGPTService()
@@ -59,5 +76,11 @@ def handle_message(event):
         TextSendMessage(text=response)
     )
 
+# 添加健康檢查端點
+@app.route("/health", methods=['GET'])
+def health_check():
+    return 'OK'
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port) 
