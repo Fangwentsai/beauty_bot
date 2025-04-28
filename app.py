@@ -57,15 +57,30 @@ def callback():
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     user_id = event.source.user_id
-    # 獲取用戶資訊
     user_info = user_service.get_user_info(user_id)
+    user_message = event.message.text.strip()
+    updated = False
+
+    # 如果還沒暱稱且訊息不像電話，當作暱稱
+    if not user_info.get('name') and not user_message.isdigit():
+        user_service.update_user_info(user_id, {'name': user_message})
+        updated = True
+    # 如果還沒電話且訊息像電話（10碼數字）
+    elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
+        user_service.update_user_info(user_id, {'phone': user_message})
+        updated = True
+
+    # 重新取得最新 user_info
+    if updated:
+        user_info = user_service.get_user_info(user_id)
+
     # 使用 ChatGPT 處理訊息
     response = chatgpt_service.process_message(
-        event.message.text,
+        user_message,
         user_info=user_info
     )
     # 檢查是否包含預約相關指令
-    if "預約" in event.message.text:
+    if "預約" in user_message:
         available_slots = calendar_service.get_available_slots()
         response = chatgpt_service.format_booking_response(response, available_slots)
     # 只回覆一次
