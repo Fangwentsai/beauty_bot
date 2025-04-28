@@ -56,16 +56,6 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    # 先回覆一個訊息
-    with ApiClient(configuration) as api_client:
-        messaging_api = MessagingApi(api_client)
-        messaging_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[V3TextMessage(text="我們正在處理您的預約，請稍候...")]
-            )
-        )
-    # 再進行較慢的處理（如寫入資料庫、呼叫外部API等）
     user_id = event.source.user_id
     # 獲取用戶資訊
     user_info = user_service.get_user_info(user_id)
@@ -78,7 +68,7 @@ def handle_message(event):
     if "預約" in event.message.text:
         available_slots = calendar_service.get_available_slots()
         response = chatgpt_service.format_booking_response(response, available_slots)
-    # 發送回應
+    # 只回覆一次
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApi(api_client)
         messaging_api.reply_message(
