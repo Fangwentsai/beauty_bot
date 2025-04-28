@@ -61,29 +61,29 @@ def handle_message(event):
     user_message = event.message.text.strip()
     updated = False
 
-    # 避免將打招呼詞當作名字
     greetings = ['你好', '哈囉', 'hi', 'hello', '您好', '嗨', '哈囉～', '哈囉!']
-    # 只有在未進入預約流程時才進行新用戶建檔
     in_booking_flow = ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date')
 
+    # 建檔流程
     if not in_booking_flow:
-        # 如果還沒暱稱且訊息不像電話且不是打招呼詞，當作暱稱
         if not user_info.get('name') and user_message.lower() not in greetings and not user_message.isdigit():
             user_service.update_user_info(user_id, {'name': user_message})
             print(f"[LOG] 已寫入用戶 {user_id} 的暱稱：{user_message}")
             updated = True
-        # 如果還沒電話且訊息像電話（8~12碼數字）
         elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
             user_service.update_user_info(user_id, {'phone': user_message})
             print(f"[LOG] 已寫入用戶 {user_id} 的電話：{user_message}")
             updated = True
 
-    # 重新取得最新 user_info
     if updated:
         user_info = user_service.get_user_info(user_id)
 
+    # 建檔流程結束後自動引導預約
+    if not in_booking_flow and user_info.get('name') and user_info.get('phone'):
+        user_service.set_state(user_id, 'booking_ask_date')
+        response = f"謝謝你，{user_info.get('name')}！請問你想預約哪一天呢？（例如：2025-05-03）💖"
     # 預約流程：先問日期，再查詢當天時段
-    if ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date'):
+    elif ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date'):
         import re
         date_match = re.match(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", user_message)
         if user_info.get('state') == 'booking_ask_date' and date_match:
