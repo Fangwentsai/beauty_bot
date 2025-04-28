@@ -1,35 +1,16 @@
 import os
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
-import pickle
 
 class GoogleCalendarService:
     def __init__(self):
-        self.SCOPES = ['https://www.googleapis.com/auth/calendar']
-        self.creds = None
-        self.service = None
-        self.initialize_service()
-
-    def initialize_service(self):
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                self.creds = pickle.load(token)
-
-        if not self.creds or not self.creds.valid:
-            if self.creds and self.creds.expired and self.creds.refresh_token:
-                self.creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    os.getenv('GOOGLE_CALENDAR_CREDENTIALS'), self.SCOPES)
-                self.creds = flow.run_local_server(port=0)
-            
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(self.creds, token)
-
-        self.service = build('calendar', 'v3', credentials=self.creds)
+        SCOPES = ['https://www.googleapis.com/auth/calendar']
+        creds = service_account.Credentials.from_service_account_file(
+            os.getenv('GOOGLE_CALENDAR_CREDENTIALS'),
+            scopes=SCOPES
+        )
+        self.service = build('calendar', 'v3', credentials=creds)
 
     def get_available_slots(self, days_ahead=7):
         """獲取未來幾天內的可用時段"""
