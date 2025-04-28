@@ -56,13 +56,15 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
+    import re
+    from datetime import datetime
     user_id = event.source.user_id
     user_info = user_service.get_user_info(user_id)
     user_message = event.message.text.strip()
     updated = False
 
     greetings = ['你好', '哈囉', 'hi', 'hello', '您好', '嗨', '哈囉～', '哈囉!']
-    in_booking_flow = ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date')
+    in_booking_flow = (user_info.get('state') in ['booking_ask_date', 'booking_ask_time']) or ("預約" in user_message)
 
     # 建檔流程
     if not in_booking_flow:
@@ -81,29 +83,83 @@ def handle_message(event):
     # 建檔流程結束後自動引導預約
     if not in_booking_flow and user_info.get('name') and user_info.get('phone'):
         user_service.set_state(user_id, 'booking_ask_date')
-        response = f"謝謝你，{user_info.get('name')}！請問你想預約哪一天呢？（例如：2025-05-03）💖"
-    # 預約流程：先問日期，再查詢當天時段
-    elif ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date'):
-        import re
-        date_match = re.match(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", user_message)
-        if user_info.get('state') == 'booking_ask_date' and date_match:
-            date_str = f"{date_match.group(1)}-{int(date_match.group(2)):02d}-{int(date_match.group(3)):02d}"
-            user_service.set_state(user_id, '', booking_date=date_str)
-            try:
-                print(f"[LOG] 查詢 Google Calendar {date_str} 可預約時段 for user {user_id}")
-                slots = calendar_service.get_available_slots_by_date(date_str)
-                print(f"[LOG] 查詢結果：{slots}")
-                if slots:
-                    slot_text = '\n'.join([f"{s}" for s in slots])
-                    response = f"這天目前可預約的時段有：\n{slot_text}\n請問你想選哪一個時段呢？😊"
-                else:
-                    response = f"這天目前已無可預約時段，請換一天試試看喔！🥲"
-            except Exception as e:
-                print(f"[ERROR] Google Calendar 查詢失敗：{e}")
-                response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
+        response = f"謝謝你，{user_info.get('name')}！請問你想預約哪一天呢？（例如：2025-05-03 或 5/3）💖"
+    # 預約流程
+    elif user_info.get('state') == 'booking_ask_date' or ("預約" in user_message):
+        # 支援多種日期格式
+        date_match = re.search(r"(20\d{2})[-/.年 ]?(\d{1,2})[-/.月 ]?(\d{1,2})日?", user_message)
+        if not date_match:
+            date_match = re.search(r"(\d{1,2})[-/.月 ]?(\d{1,2})日?", user_message)
+            if date_match:
+                year = datetime.now().year
+                month = int(date_match.group(1))
+                day = int(date_match.group(2))
+                date_str = f"{year}-{month:02d}-{day:02d}"
+            else:
+                user_service.set_state(user_id, 'booking_ask_date')
+                response = "請問你想預約哪一天呢？（例如：2025-05-03 或 5/3）🌸"
         else:
-            user_service.set_state(user_id, 'booking_ask_date')
-            response = "請問你想預約哪一天呢？（例如：2025-05-03）🌸"
+            if len(date_match.groups()) == 3:
+                year = int(date_match.group(1)) if len(date_match.group(1)) == 4 else datetime.now().year
+                month = int(date_match.group(2))
+                day = int(date_match.group(3))
+                date_str = f"{year}-{month:02d}-{day:02d}"
+            else:
+                date_str = None
+            if date_str:
+                user_service.set_state(user_id, 'booking_ask_time', booking_date=date_str)
+                try:
+                    print(f"[LOG] 查詢 Google Calendar {date_str} 可預約時段 for user {user_id}")
+                    slots = calendar_service.get_available_slots_by_date(date_str)
+                    print(f"[LOG] 查詢結果：{slots}")
+                    # 如果大部分時段都空，直接請客人輸入想要的時段
+                    if len(slots) > 10:
+                        response = f"這天大部分時段都還有空位唷！請直接輸入你想預約的時間（例如：14:00）😊"
+                    elif slots:
+                        slot_text = '\n'.join([f"{s}" for s in slots])
+                        response = f"這天目前可預約的時段有：\n{slot_text}\n請問你想選哪一個時段呢？😊"
+                    else:
+                        response = f"這天目前已無可預約時段，請換一天試試看喔！🥲"
+                except Exception as e:
+                    print(f"[ERROR] Google Calendar 查詢失敗：{e}")
+                    response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
+            else:
+                user_service.set_state(user_id, 'booking_ask_date')
+                response = "請問你想預約哪一天呢？（例如：2025-05-03 或 5/3）🌸"
+    elif user_info.get('state') == 'booking_ask_time' and user_info.get('booking_date'):
+        # 支援多種時間格式
+        time_match = re.search(r"(\d{1,2}):(\d{2})", user_message)
+        if not time_match:
+            time_match = re.search(r"(\d{1,2})點(\d{1,2})?分?", user_message)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2)) if time_match.lastindex and time_match.group(2) else 0
+            time_str = f"{hour:02d}:{minute:02d}"
+            # 檢查該時段是否可預約
+            slots = calendar_service.get_available_slots_by_date(user_info.get('booking_date'))
+            if time_str in slots:
+                # 建立 Google Calendar 預約
+                try:
+                    start_dt = datetime.strptime(user_info.get('booking_date') + ' ' + time_str, "%Y-%m-%d %H:%M")
+                    end_dt = start_dt.replace(minute=start_dt.minute+30 if start_dt.minute < 30 else 0, hour=start_dt.hour if start_dt.minute < 30 else start_dt.hour+1)
+                    event_link = calendar_service.create_booking(start_dt, end_dt, user_info, '美容服務預約')
+                    # 寫入 Firebase booking history
+                    user_service.add_booking(user_id, {
+                        'start_time': start_dt.isoformat(),
+                        'end_time': end_dt.isoformat(),
+                        'service': '美容服務預約',
+                        'status': 'confirmed',
+                        'created_at': datetime.now().isoformat()
+                    })
+                    user_service.set_state(user_id, '', booking_date='', booking_time='')
+                    response = f"預約成功！🎉\n已幫你預約 {user_info.get('booking_date')} {time_str}，期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
+                except Exception as e:
+                    print(f"[ERROR] Google Calendar/Firebase 寫入失敗：{e}")
+                    response = "抱歉，預約時發生錯誤，請稍後再試。"
+            else:
+                response = f"這個時段已被預約或不存在，請再輸入一次你想預約的時間（例如：14:00）😊"
+        else:
+            response = "請輸入你想預約的時間（例如：14:00）😊"
     else:
         response = chatgpt_service.process_message(
             user_message,
