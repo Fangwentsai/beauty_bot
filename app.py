@@ -64,10 +64,12 @@ def handle_message(event):
     # 如果還沒暱稱且訊息不像電話，當作暱稱
     if not user_info.get('name') and not user_message.isdigit():
         user_service.update_user_info(user_id, {'name': user_message})
+        print(f"[LOG] 已寫入用戶 {user_id} 的暱稱：{user_message}")
         updated = True
-    # 如果還沒電話且訊息像電話（10碼數字）
+    # 如果還沒電話且訊息像電話（8~12碼數字）
     elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
         user_service.update_user_info(user_id, {'phone': user_message})
+        print(f"[LOG] 已寫入用戶 {user_id} 的電話：{user_message}")
         updated = True
 
     # 重新取得最新 user_info
@@ -81,8 +83,14 @@ def handle_message(event):
     )
     # 檢查是否包含預約相關指令
     if "預約" in user_message:
-        available_slots = calendar_service.get_available_slots()
-        response = chatgpt_service.format_booking_response(response, available_slots)
+        try:
+            print(f"[LOG] 查詢 Google Calendar 可預約時段 for user {user_id}")
+            available_slots = calendar_service.get_available_slots()
+            print(f"[LOG] 查詢結果：{available_slots}")
+            response = chatgpt_service.format_booking_response(response, available_slots)
+        except Exception as e:
+            print(f"[ERROR] Google Calendar 查詢失敗：{e}")
+            response += "\n（查詢預約時段時發生錯誤，請稍後再試）"
     # 只回覆一次
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApi(api_client)
