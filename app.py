@@ -1,22 +1,24 @@
 from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
 from dotenv import load_dotenv
+import json
 from services.chatgpt_service import ChatGPTService
 from services.calendar_service import GoogleCalendarService
 from services.firebase_service import FirebaseService
 from services.user_service import UserService
-import json
+
+# v3 SDK imports
+from linebot.v3.messaging import MessagingApi, Configuration, ApiClient, ReplyMessageRequest, TextMessage as V3TextMessage
+from linebot.v3.webhook import WebhookHandler
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 # 載入環境變數
 load_dotenv()
 
 app = Flask(__name__)
 
-# Line Bot 設定
-line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
+# Line Bot v3 設定
+configuration = Configuration(access_token=os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
 # 如果在 Render 環境中，將憑證寫入臨時文件
@@ -48,33 +50,43 @@ def callback():
     
     try:
         handler.handle(body, signature)
-    except InvalidSignatureError:
+    except Exception as e:
         abort(400)
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
+    # 先回覆一個訊息
+    with ApiClient(configuration) as api_client:
+        messaging_api = MessagingApi(api_client)
+        messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[V3TextMessage(text="我們正在處理您的預約，請稍候...")]
+            )
+        )
+    # 再進行較慢的處理（如寫入資料庫、呼叫外部API等）
     user_id = event.source.user_id
-    
     # 獲取用戶資訊
     user_info = user_service.get_user_info(user_id)
-    
     # 使用 ChatGPT 處理訊息
     response = chatgpt_service.process_message(
         event.message.text,
         user_info=user_info
     )
-    
     # 檢查是否包含預約相關指令
     if "預約" in event.message.text:
         available_slots = calendar_service.get_available_slots()
         response = chatgpt_service.format_booking_response(response, available_slots)
-    
     # 發送回應
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=response)
-    )
+    with ApiClient(configuration) as api_client:
+        messaging_api = MessagingApi(api_client)
+        messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[V3TextMessage(text=response)]
+            )
+        )
 
 # 添加健康檢查端點
 @app.route("/health", methods=['GET'])
