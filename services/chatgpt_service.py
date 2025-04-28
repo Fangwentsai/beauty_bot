@@ -1,10 +1,10 @@
 import os
-from openai import OpenAI
+import openai
 from datetime import datetime
 
 class ChatGPTService:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        openai.api_key = os.getenv('OPENAI_API_KEY')
         self.system_prompt = """你是一個專業的美容預約助手，負責協助客人預約美容服務。
         請注意以下幾點：
         1. 使用親切友善的語氣，避免過於制式的回答
@@ -31,7 +31,7 @@ class ChatGPTService:
         messages.append({"role": "user", "content": message})
         
         try:
-            response = self.client.chat.completions.create(
+            response = openai.chat.completions.create(
                 model="gpt-4",
                 messages=messages,
                 temperature=0.7,
