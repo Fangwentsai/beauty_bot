@@ -13,7 +13,10 @@ class UserService:
             self.firebase_service.create_user(user_id, {
                 'name': '',
                 'phone': '',
-                'favorite_services': []
+                'favorite_services': [],
+                'state': '',
+                'booking_date': '',
+                'booking_time': ''
             })
             user_info = self.firebase_service.get_user(user_id)
         
@@ -22,6 +25,15 @@ class UserService:
     def update_user_info(self, user_id, user_data):
         """更新用戶資訊"""
         self.firebase_service.update_user(user_id, user_data)
+
+    def set_state(self, user_id, state, booking_date='', booking_time=''):
+        """設定用戶狀態與暫存預約資訊"""
+        update = {'state': state}
+        if booking_date is not None:
+            update['booking_date'] = booking_date
+        if booking_time is not None:
+            update['booking_time'] = booking_time
+        self.update_user_info(user_id, update)
 
     def add_booking(self, user_id, booking_data):
         """添加預約記錄"""

@@ -62,4 +62,28 @@ class GoogleCalendarService:
             event = self.service.events().insert(calendarId='primary', body=event).execute()
             return event.get('htmlLink')
         except Exception as e:
-            raise Exception(f'創建預約失敗：{str(e)}') 
+            raise Exception(f'創建預約失敗：{str(e)}')
+
+    def get_available_slots_by_date(self, date):
+        """查詢指定日期的可用時段（10:00-20:00，每30分鐘）"""
+        date_start = datetime.strptime(date, "%Y-%m-%d").replace(hour=10, minute=0, second=0, microsecond=0)
+        date_end = date_start.replace(hour=20, minute=0)
+        events_result = self.service.events().list(
+            calendarId='primary',
+            timeMin=date_start.isoformat() + 'Z',
+            timeMax=date_end.isoformat() + 'Z',
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        booked_slots = []
+        for event in events_result.get('items', []):
+            start = event['start'].get('dateTime')
+            if start:
+                booked_slots.append(datetime.fromisoformat(start.replace('Z', '+00:00')))
+        available_slots = []
+        current = date_start
+        while current < date_end:
+            if current not in booked_slots:
+                available_slots.append(current.strftime('%H:%M'))
+            current += timedelta(minutes=30)
+        return available_slots 

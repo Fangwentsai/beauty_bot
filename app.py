@@ -76,21 +76,38 @@ def handle_message(event):
     if updated:
         user_info = user_service.get_user_info(user_id)
 
-    # 使用 ChatGPT 處理訊息
-    response = chatgpt_service.process_message(
-        user_message,
-        user_info=user_info
-    )
-    # 檢查是否包含預約相關指令
-    if "預約" in user_message:
-        try:
-            print(f"[LOG] 查詢 Google Calendar 可預約時段 for user {user_id}")
-            available_slots = calendar_service.get_available_slots()
-            print(f"[LOG] 查詢結果：{available_slots}")
-            response = chatgpt_service.format_booking_response(response, available_slots)
-        except Exception as e:
-            print(f"[ERROR] Google Calendar 查詢失敗：{e}")
-            response += "\n（查詢預約時段時發生錯誤，請稍後再試）"
+    # 預約流程：先問日期，再查詢當天時段
+    # 1. 用戶說「預約」或 state=="booking_ask_date" 時，詢問日期
+    if ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date'):
+        import re
+        # 嘗試解析日期格式 yyyy-mm-dd
+        date_match = re.match(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", user_message)
+        if user_info.get('state') == 'booking_ask_date' and date_match:
+            # 用戶已回覆日期，查詢該天時段
+            date_str = f"{date_match.group(1)}-{int(date_match.group(2)):02d}-{int(date_match.group(3)):02d}"
+            user_service.set_state(user_id, '', booking_date=date_str)
+            try:
+                print(f"[LOG] 查詢 Google Calendar {date_str} 可預約時段 for user {user_id}")
+                slots = calendar_service.get_available_slots_by_date(date_str)
+                print(f"[LOG] 查詢結果：{slots}")
+                if slots:
+                    slot_text = '\n'.join([f"{s}" for s in slots])
+                    response = f"這天目前可預約的時段有：\n{slot_text}\n請問你想選哪一個時段呢？😊"
+                else:
+                    response = f"這天目前已無可預約時段，請換一天試試看喔！🥲"
+            except Exception as e:
+                print(f"[ERROR] Google Calendar 查詢失敗：{e}")
+                response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
+        else:
+            # 尚未收到日期，詢問日期
+            user_service.set_state(user_id, 'booking_ask_date')
+            response = "請問你想預約哪一天呢？（例如：2025-05-03）🌸"
+    else:
+        # 一般對話或新用戶建檔流程
+        response = chatgpt_service.process_message(
+            user_message,
+            user_info=user_info
+        )
     # 只回覆一次
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApi(api_client)
