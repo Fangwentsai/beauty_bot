@@ -61,29 +61,32 @@ def handle_message(event):
     user_message = event.message.text.strip()
     updated = False
 
-    # 如果還沒暱稱且訊息不像電話，當作暱稱
-    if not user_info.get('name') and not user_message.isdigit():
-        user_service.update_user_info(user_id, {'name': user_message})
-        print(f"[LOG] 已寫入用戶 {user_id} 的暱稱：{user_message}")
-        updated = True
-    # 如果還沒電話且訊息像電話（8~12碼數字）
-    elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
-        user_service.update_user_info(user_id, {'phone': user_message})
-        print(f"[LOG] 已寫入用戶 {user_id} 的電話：{user_message}")
-        updated = True
+    # 避免將打招呼詞當作名字
+    greetings = ['你好', '哈囉', 'hi', 'hello', '您好', '嗨', '哈囉～', '哈囉!']
+    # 只有在未進入預約流程時才進行新用戶建檔
+    in_booking_flow = ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date')
+
+    if not in_booking_flow:
+        # 如果還沒暱稱且訊息不像電話且不是打招呼詞，當作暱稱
+        if not user_info.get('name') and user_message.lower() not in greetings and not user_message.isdigit():
+            user_service.update_user_info(user_id, {'name': user_message})
+            print(f"[LOG] 已寫入用戶 {user_id} 的暱稱：{user_message}")
+            updated = True
+        # 如果還沒電話且訊息像電話（8~12碼數字）
+        elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
+            user_service.update_user_info(user_id, {'phone': user_message})
+            print(f"[LOG] 已寫入用戶 {user_id} 的電話：{user_message}")
+            updated = True
 
     # 重新取得最新 user_info
     if updated:
         user_info = user_service.get_user_info(user_id)
 
     # 預約流程：先問日期，再查詢當天時段
-    # 1. 用戶說「預約」或 state=="booking_ask_date" 時，詢問日期
     if ("預約" in user_message) or (user_info.get('state') == 'booking_ask_date'):
         import re
-        # 嘗試解析日期格式 yyyy-mm-dd
         date_match = re.match(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", user_message)
         if user_info.get('state') == 'booking_ask_date' and date_match:
-            # 用戶已回覆日期，查詢該天時段
             date_str = f"{date_match.group(1)}-{int(date_match.group(2)):02d}-{int(date_match.group(3)):02d}"
             user_service.set_state(user_id, '', booking_date=date_str)
             try:
@@ -99,16 +102,13 @@ def handle_message(event):
                 print(f"[ERROR] Google Calendar 查詢失敗：{e}")
                 response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
         else:
-            # 尚未收到日期，詢問日期
             user_service.set_state(user_id, 'booking_ask_date')
             response = "請問你想預約哪一天呢？（例如：2025-05-03）🌸"
     else:
-        # 一般對話或新用戶建檔流程
         response = chatgpt_service.process_message(
             user_message,
             user_info=user_info
         )
-    # 只回覆一次
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApi(api_client)
         messaging_api.reply_message(
