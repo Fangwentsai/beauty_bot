@@ -49,6 +49,36 @@ BRAND_INTRO = """哈囉！歡迎來到 𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥
 
 請問我可以怎麼稱呼您呢？😊"""
 
+# 歡迎回訪訊息
+WELCOME_BACK = """{name}您好！歡迎回到 𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥𝕪 美學 💖
+
+很高興能再次為您服務！我們提供日式美睫、霧眉、霧唇等多項專業服務。
+
+請問今天有什麼可以為您效勞的嗎？😊"""
+
+# 服務介紹
+SERVICE_INTRO = """𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥𝕪 提供的專業服務：
+
+✨ 日式美睫 (2小時)
+日式輕柔嫁接技術，打造自然捲翹的睫毛，讓您的眼睛更加迷人有神。
+
+✨ 睫毛管理 (1小時)
+專業護理與修剪，保持睫毛健康，延長睫毛嫁接的使用壽命。
+
+✨ 霧唇 (3小時)
+半永久性定妝技術，打造自然漸層唇色，讓您的雙唇呈現完美色澤。
+
+✨ 霧眉 (3小時) 
+精細的眉型設計與半永久霧染，告別每日畫眉困擾，眉形自然持久。
+
+✨ 髮際線 (3小時)
+修飾髮際線，讓額頭更加自然勻稱，改善髮線後退問題。
+
+✨ 美睫教學 (4小時)
+專業美睫師培訓課程，學習嫁接技巧與經營秘訣。
+
+請選擇您想預約的服務，或輸入「預約」開始預約流程。"""
+
 # 電話用途說明
 PHONE_PURPOSE = """感謝您的信任！為了能夠在預約前後與您聯繫，以及在服務日有任何變動時能及時通知您，我們需要您的聯絡電話。
 
@@ -107,13 +137,50 @@ def handle_message(event):
     logger.info(f"收到用戶 {user_id} 訊息: {user_message}")
     logger.info(f"目前用戶資料: {user_info}")
 
+    # 記錄最後互動時間
+    current_time = datetime.now()
+    last_interaction = user_info.get('last_interaction')
+    
+    # 如果這是一個新的對話（超過30分鐘沒有互動）
+    is_new_session = False
+    if not last_interaction:
+        is_new_session = True
+    else:
+        try:
+            last_time = datetime.fromisoformat(last_interaction)
+            # 如果距離上次互動超過30分鐘，視為新的對話
+            if (current_time - last_time).total_seconds() > 1800:  # 30分鐘 = 1800秒
+                is_new_session = True
+        except ValueError:
+            is_new_session = True
+    
+    # 更新最後互動時間
+    user_service.update_user_info(user_id, {'last_interaction': current_time.isoformat()})
+    
     greetings = ['你好', '哈囉', 'hi', 'hello', '您好', '嗨', '哈囉～', '哈囉!']
     in_booking_flow = (user_info.get('state') in ['booking_ask_service', 'booking_ask_date', 'booking_ask_time']) or ("預約" in user_message)
     
+    # 如果是新的對話階段且用戶已有名字，發送歡迎回訪訊息
+    if is_new_session and user_info.get('name') and not response:
+        welcome_msg = WELCOME_BACK.format(name=user_info.get('name'))
+        response = welcome_msg
+    
     # 檢查是否是服務查詢
-    if "服務" in user_message and ("項目" in user_message or "介紹" in user_message or "有哪些" in user_message):
-        response = f"{SERVICE_LIST}\n請問您想預約哪項服務呢？"
+    if ("服務" in user_message and ("項目" in user_message or "介紹" in user_message or "有哪些" in user_message)) or "服務介紹" in user_message:
+        response = SERVICE_INTRO
         user_service.set_state(user_id, 'booking_ask_service')
+    # 檢查是否要取消預約
+    elif ("取消" in user_message or "不要" in user_message or "算了" in user_message) and ("預約" in user_message or user_info.get('state') in ['booking_ask_date', 'booking_ask_time', 'booking_ask_service']):
+        # 清除預約狀態
+        user_service.set_state(user_id, '')
+        user_service.update_user_info(user_id, {
+            'booking_date': '',
+            'booking_time': '',
+            'selected_service': ''
+        })
+        logger.info(f"用戶 {user_id} 取消了預約")
+        print(f"[LOG] 用戶 {user_id} 取消了預約")
+        response = "已取消本次預約。若您改變主意，隨時可以重新開始預約流程。😊"
     # 檢查是否詢問預約進度或確認
     elif "預約" in user_message and ("狀態" in user_message or "進度" in user_message or "確認" in user_message):
         # 檢查用戶是否有進行中的預約
@@ -132,7 +199,7 @@ def handle_message(event):
         if not user_info.get('name'):
             response = BRAND_INTRO
         else:
-            response = f"嗨，{user_info.get('name')}！歡迎回到 Fanny Beauty 美學，有什麼我可以幫助你的嗎？💖"
+            response = WELCOME_BACK.format(name=user_info.get('name'))
     # 建檔流程
     elif not in_booking_flow:
         # 處理同時輸入名字和電話的情況
@@ -188,7 +255,7 @@ def handle_message(event):
         user_service.set_state(user_id, 'booking_ask_service')
         name = user_info.get('name', '').strip()
         logger.info(f"用戶完成建檔，名字為: '{name}'")
-        response = f"謝謝你，{name}！請問您想預約哪項服務呢？\n{SERVICE_LIST}"
+        response = f"謝謝你，{name}！\n\n以下是我們提供的專業服務：\n{SERVICE_INTRO}"
     # 預約流程
     elif not response and (user_info.get('state') == 'booking_ask_date' or ("預約" in user_message)):
         # 處理日期時間組合型輸入，例如 "5/5 14:00" 或 "5/5 2.半"
@@ -242,6 +309,27 @@ def handle_message(event):
                         response = f"{date_str} 這天目前可預約的時段有：\n{slot_text}\n\n請問您想選哪一個時段呢？😊"
                     else:
                         response = f"{date_str} 這天目前已無可預約時段，請換一天試試看喔！🥲"
+                    
+                    # 檢查選擇的時段是否可用
+                    if time_str in slots:
+                        # 獲取所選服務的時長
+                        selected_service = user_info.get('selected_service', '美容服務預約')
+                        duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
+                        
+                        response = f"您選擇了 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
+                        
+                        # 保存時間信息到用戶資料中
+                        user_service.update_user_info(user_id, {'booking_time': time_str, 'last_message': response})
+                    else:
+                        if slots:
+                            morning_slots = [s for s in slots if int(s.split(':')[0]) < 12]
+                            afternoon_slots = [s for s in slots if 12 <= int(s.split(':')[0]) < 18]
+                            evening_slots = [s for s in slots if int(s.split(':')[0]) >= 18]
+                            
+                            slots_summary = f"早上: {', '.join(morning_slots[:3] if morning_slots else ['無'])}\n下午: {', '.join(afternoon_slots[:3] if afternoon_slots else ['無'])}\n晚上: {', '.join(evening_slots[:3] if evening_slots else ['無'])}"
+                            response = f"抱歉，{time_str} 時段已被預約。\n\n{date_str} 可預約的時段有：\n{slots_summary}\n\n請選擇其他時段或輸入新的日期。"
+                        else:
+                            response = f"抱歉，{date_str} 這天已無可預約時段，請換一天試試看喔！🥲"
                 except Exception as e:
                     logger.error(f"查詢可用時段失敗: {str(e)}")
                     print(f"[ERROR] 查詢可用時段失敗: {e}")
@@ -282,6 +370,7 @@ def handle_message(event):
         # 如果沒有匹配到日期時間組合，嘗試單獨匹配日期
         elif not response:
             # 支援多種日期格式
+            date_str = None  # 初始化 date_str 變量
             date_match = re.search(r"(20\d{2})[-/.年 ]?(\d{1,2})[-/.月 ]?(\d{1,2})日?", user_message)
             if not date_match:
                 date_match = re.search(r"(\d{1,2})[-/.月 ]?(\d{1,2})日?", user_message)
@@ -294,7 +383,7 @@ def handle_message(event):
                 else:
                     logger.info("日期匹配失敗，重新要求日期")
                     user_service.set_state(user_id, 'booking_ask_date')
-                    response = "請問你想預約哪一天呢？（例如：2025-05-03 或 5/3）🌸"
+                    response = "請問您想預約哪一天呢？（例如：5/15 或 2025-05-15）🌸"
             else:
                 if len(date_match.groups()) == 3:
                     year = int(date_match.group(1)) if len(date_match.group(1)) == 4 else datetime.now().year
