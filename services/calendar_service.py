@@ -2,6 +2,10 @@ import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
+import logging
+
+# 設置日誌
+logger = logging.getLogger(__name__)
 
 class GoogleCalendarService:
     def __init__(self):
@@ -11,6 +15,7 @@ class GoogleCalendarService:
             scopes=SCOPES
         )
         self.service = build('calendar', 'v3', credentials=creds)
+        self.calendar_id = 'primary'  # 使用主要行事曆
 
     def get_available_slots(self, days_ahead=7):
         """獲取未來幾天內的可用時段"""
@@ -19,7 +24,7 @@ class GoogleCalendarService:
         
         # 獲取已預約的時段
         events_result = self.service.events().list(
-            calendarId='primary',
+            calendarId=self.calendar_id,
             timeMin=now.isoformat() + 'Z',
             timeMax=end_time.isoformat() + 'Z',
             singleEvents=True,
@@ -56,20 +61,68 @@ class GoogleCalendarService:
                 'dateTime': end_time.isoformat(),
                 'timeZone': 'Asia/Taipei',
             },
+            'reminders': {
+                'useDefault': False,
+                'overrides': [
+                    {'method': 'email', 'minutes': 24 * 60},
+                    {'method': 'popup', 'minutes': 60},
+                ],
+            },
         }
         
         try:
-            event = self.service.events().insert(calendarId='primary', body=event).execute()
-            return event.get('htmlLink')
+            # 創建預約
+            created_event = self.service.events().insert(calendarId=self.calendar_id, body=event).execute()
+            event_id = created_event.get('id')
+            event_link = created_event.get('htmlLink')
+            
+            # 確認預約已成功建立
+            if not event_id:
+                raise Exception("無法獲取預約 ID，預約可能未成功建立")
+            
+            # 驗證預約是否存在於行事曆中
+            self.verify_event_created(event_id)
+            
+            logger.info(f"成功建立預約 - ID: {event_id}, 連結: {event_link}")
+            return {
+                'id': event_id,
+                'link': event_link,
+                'summary': created_event.get('summary'),
+                'start': created_event['start'].get('dateTime'),
+                'end': created_event['end'].get('dateTime')
+            }
         except Exception as e:
+            logger.error(f"創建預約失敗: {str(e)}")
             raise Exception(f'創建預約失敗：{str(e)}')
+            
+    def verify_event_created(self, event_id):
+        """驗證事件是否已成功建立在 Google Calendar 中"""
+        try:
+            event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+            if event and event.get('id') == event_id:
+                logger.info(f"驗證成功：行事曆項目 {event_id} 存在")
+                return True
+            else:
+                logger.error(f"驗證失敗：找不到行事曆項目 {event_id}")
+                return False
+        except Exception as e:
+            logger.error(f"驗證行事曆項目時發生錯誤: {str(e)}")
+            raise Exception(f"驗證行事曆項目失敗: {str(e)}")
+            
+    def get_event_by_id(self, event_id):
+        """根據 ID 獲取事件詳情"""
+        try:
+            return self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+        except Exception as e:
+            logger.error(f"獲取行事曆項目失敗: {str(e)}")
+            return None
 
     def get_available_slots_by_date(self, date):
         """查詢指定日期的可用時段（10:00-20:00，每30分鐘）"""
         date_start = datetime.strptime(date, "%Y-%m-%d").replace(hour=10, minute=0, second=0, microsecond=0)
         date_end = date_start.replace(hour=20, minute=0)
         events_result = self.service.events().list(
-            calendarId='primary',
+            calendarId=self.calendar_id,
             timeMin=date_start.isoformat() + 'Z',
             timeMax=date_end.isoformat() + 'Z',
             singleEvents=True,

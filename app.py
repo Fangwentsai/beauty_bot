@@ -198,20 +198,33 @@ def handle_message(event):
                             logger.info(f"嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                             print(f"[LOG] 嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                             
-                            event_link = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
-                            logger.info(f"Google Calendar 預約創建成功: {event_link}")
-                            print(f"[LOG] Google Calendar 預約創建成功: {event_link}")
+                            event_result = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
+                            logger.info(f"Google Calendar 預約創建成功: {event_result}")
+                            print(f"[LOG] Google Calendar 預約創建成功: {event_result}")
                             
+                            # 確認事件已成功建立
+                            event_id = event_result['id']
+                            event_link = event_result['link']
+                            
+                            # 驗證一次事件確實存在
+                            verified_event = calendar_service.get_event_by_id(event_id)
+                            if not verified_event:
+                                logger.error(f"無法驗證事件存在: {event_id}")
+                                raise Exception("無法確認預約已建立，請稍後再試")
+                            
+                            # 寫入 Firebase booking history
                             booking_data = {
                                 'service': selected_service,
                                 'start_time': start_dt.isoformat(),
                                 'end_time': end_dt.isoformat(),
                                 'status': 'confirmed',
-                                'created_at': datetime.now().isoformat()
+                                'created_at': datetime.now().isoformat(),
+                                'calendar_event_id': event_id,
+                                'calendar_event_link': event_link
                             }
                             user_service.add_booking(user_id, booking_data)
                             user_service.set_state(user_id, '', booking_date='', booking_time='', selected_service='')
-                            response = f"預約成功！🎉\n已幫你預約 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
+                            response = f"預約成功！🎉\n已幫你預約 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
                         except Exception as e:
                             logger.error(f"預約失敗: {str(e)}")
                             print(f"[ERROR] 預約失敗: {e}")
@@ -377,17 +390,29 @@ def handle_message(event):
                         logger.info(f"嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                         print(f"[LOG] 嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                         
-                        event_link = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
-                        logger.info(f"Google Calendar 預約創建成功: {event_link}")
-                        print(f"[LOG] Google Calendar 預約創建成功: {event_link}")
+                        event_result = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
+                        logger.info(f"Google Calendar 預約創建成功: {event_result}")
+                        print(f"[LOG] Google Calendar 預約創建成功: {event_result}")
                         
+                        # 確認事件已成功建立
+                        event_id = event_result['id']
+                        event_link = event_result['link']
+                        
+                        # 驗證一次事件確實存在
+                        verified_event = calendar_service.get_event_by_id(event_id)
+                        if not verified_event:
+                            logger.error(f"無法驗證事件存在: {event_id}")
+                            raise Exception("無法確認預約已建立，請稍後再試")
+                            
                         # 寫入 Firebase booking history
                         booking_data = {
                             'service': selected_service,
                             'start_time': start_dt.isoformat(),
                             'end_time': end_dt.isoformat(),
                             'status': 'confirmed',
-                            'created_at': datetime.now().isoformat()
+                            'created_at': datetime.now().isoformat(),
+                            'calendar_event_id': event_id,
+                            'calendar_event_link': event_link
                         }
                         logger.info(f"嘗試寫入 Firebase: {booking_data}")
                         print(f"[LOG] 嘗試寫入 Firebase: {booking_data}")
@@ -397,7 +422,7 @@ def handle_message(event):
                         print(f"[LOG] Firebase 寫入成功")
                         
                         user_service.set_state(user_id, '', booking_date='', booking_time='', selected_service='')
-                        response = f"預約成功！🎉\n已幫你預約 {user_info.get('booking_date')} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
+                        response = f"預約成功！🎉\n已幫你預約 {user_info.get('booking_date')} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
                     except Exception as e:
                         logger.error(f"Google Calendar/Firebase 寫入失敗：{str(e)}")
                         print(f"[ERROR] Google Calendar/Firebase 寫入失敗：{e}")
