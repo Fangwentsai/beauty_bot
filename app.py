@@ -45,9 +45,15 @@ SERVICE_LIST = """
 # 品牌介紹
 BRAND_INTRO = """哈囉！歡迎來到 𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥𝕪 美學 💄
 
-我是您的專屬美容顧問，可以為您安排各種美容服務的預約，包括美睫、霧眉、霧唇等項目。
+我是您的專屬美容顧問，可以為您安排各種美容服務的預約。
 
-請問我可以怎麼稱呼您呢？😊"""
+我們提供多種專業服務，包括：
+✨ 日式美睫 (2小時)
+✨ 睫毛管理 (1小時)
+✨ 霧唇、霧眉、髮際線 (各3小時)
+✨ 美睫教學 (4小時)
+
+您有什麼想了解的服務，或是需要預約嗎？😊"""
 
 # 歡迎回訪訊息
 WELCOME_BACK = """{name}您好！歡迎回到 𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥𝕪 美學 💖
@@ -217,7 +223,7 @@ def handle_message(event):
         response = welcome_msg
     
     # 檢查是否是服務查詢
-    if ("服務" in user_message and ("項目" in user_message or "介紹" in user_message or "有哪些" in user_message)) or "服務介紹" in user_message:
+    if ("服務" in user_message and ("項目" in user_message or "介紹" in user_message or "有哪些" in user_message)) or "服務介紹" in user_message or ("時間" in user_message and "多久" in user_message):
         response = SERVICE_INTRO
         user_service.set_state(user_id, 'booking_ask_service')
     # 檢查是否要取消預約
@@ -253,6 +259,10 @@ def handle_message(event):
             response = WELCOME_BACK.format(name=user_info.get('name'))
     # 建檔流程
     elif not in_booking_flow:
+        # 檢查用戶是否在詢問服務相關信息而非提供個人信息
+        if any(keyword in user_message for keyword in ["多久", "時間", "價格", "費用", "服務", "項目", "有什麼"]):
+            response = SERVICE_INTRO
+            user_service.set_state(user_id, 'booking_ask_service')
         # 處理同時輸入名字和電話的情況
         name_phone_pattern = re.search(r'([^\d]+)\s*(?:電話)?(\d{8,12})', user_message)
         if name_phone_pattern:
@@ -268,17 +278,28 @@ def handle_message(event):
             print(f"[LOG] 已寫入用戶 {user_id} 的電話：{phone}")
             
             updated = True
+            # 建檔後直接提供服務介紹
+            response = f"謝謝您，{name}！\n\n我們提供以下專業服務：\n{SERVICE_INTRO}"
+            user_service.set_state(user_id, 'booking_ask_service')
         elif not user_info.get('name') and user_message.lower() not in greetings and not user_message.isdigit():
+            # 如果用戶提供名字，記錄並詢問電話
             user_service.update_user_info(user_id, {'name': user_message})
             logger.info(f"已寫入用戶 {user_id} 的暱稱：{user_message}")
             print(f"[LOG] 已寫入用戶 {user_id} 的暱稱：{user_message}")
             response = PHONE_PURPOSE
             updated = True
         elif not user_info.get('phone') and user_message.isdigit() and 8 <= len(user_message) <= 12:
+            # 如果用戶提供電話，記錄並直接提供服務介紹
             user_service.update_user_info(user_id, {'phone': user_message})
             logger.info(f"已寫入用戶 {user_id} 的電話：{user_message}")
             print(f"[LOG] 已寫入用戶 {user_id} 的電話：{user_message}")
             updated = True
+            
+            # 取得用戶名稱（如果有）
+            user_name = user_info.get('name', '')
+            greeting = f"謝謝您，{user_name}！\n\n" if user_name else "謝謝您的信任！\n\n"
+            response = f"{greeting}以下是我們提供的專業服務：\n{SERVICE_INTRO}"
+            user_service.set_state(user_id, 'booking_ask_service')
 
     if updated:
         user_info = user_service.get_user_info(user_id)
