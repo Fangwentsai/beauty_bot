@@ -504,103 +504,147 @@ def handle_message(event):
                     print(f"[ERROR] Google Calendar 查詢失敗：{e}")
                     response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
     elif not response and user_info.get('state') == 'booking_ask_time' and user_info.get('booking_date'):
-        # 支援多種時間格式
-        logger.info(f"用戶輸入時間：{user_message}，預約日期：{user_info.get('booking_date')}")
-        print(f"[LOG] 用戶輸入時間：{user_message}，預約日期：{user_info.get('booking_date')}")
-        
-        # 處理特殊表達方式如 "2點半"
-        half_match = re.search(r"(\d{1,2})(?:點|:|\.)半", user_message)
-        if half_match:
-            hour = int(half_match.group(1))
-            # 處理12小時制轉24小時制
-            if hour < 10 and "下午" not in user_message and "晚上" not in user_message:
-                # 上午時段保持不變
-                pass
-            elif hour < 12:
-                # 下午時段轉換為24小時制
-                hour += 12
-            minute = 30
-            time_str = f"{hour:02d}:{minute:02d}"
-            logger.info(f"特殊時間格式匹配 (X點半): 時={hour}, 分={minute}, 格式化={time_str}")
-        else:
-            # 標準時間格式
-            time_match = re.search(r"(\d{1,2})[:\.](\d{1,2})", user_message)
-            if not time_match:
-                time_match = re.search(r"(\d{1,2})點(?:(\d{1,2})分?)?", user_message)
+        # 檢查是否是用戶想預約另一天（可能是輸入新日期）
+        date_only_match = re.search(r"(\d{1,2})[/\-.](\d{1,2})(?:\D|$)", user_message)
+        if date_only_match:
+            # 這是一個日期格式，用戶可能想改預約日期
+            month = int(date_only_match.group(1))
+            day = int(date_only_match.group(2))
+            year = datetime.now().year
+            new_date_str = f"{year}-{month:02d}-{day:02d}"
             
-            if time_match:
-                hour = int(time_match.group(1))
-                minute = int(time_match.group(2)) if time_match.lastindex > 1 and time_match.group(2) else 0
-                
-                # 處理12小時制轉24小時制
-                if hour < 10 and ("下午" in user_message or "晚上" in user_message):
-                    hour += 12
-                elif hour < 12 and not re.search(r"\d+:\d+", user_message) and "上午" not in user_message:
-                    # 如果是像"2點"這樣的表達，沒有明確指定上午/下午，默認為下午
-                    hour += 12
-                    
-                time_str = f"{hour:02d}:{minute:02d}"
-                logger.info(f"時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
-            else:
-                # 直接數字可能是小時
-                digit_match = re.search(r"^(\d{1,2})$", user_message)
-                if digit_match:
-                    hour = int(digit_match.group(1))
-                    minute = 0
-                    
-                    # 處理12小時制轉24小時制，單獨數字默認為下午時間
-                    if hour < 12:
-                        hour += 12
-                        
-                    time_str = f"{hour:02d}:{minute:02d}"
-                    logger.info(f"純數字時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
-                else:
-                    time_str = None
-                    logger.info(f"無法匹配時間格式: {user_message}")
-                    print(f"[LOG] 無法匹配時間格式: {user_message}")
-                    response = "請輸入你想預約的時間（例如：14:00、2點半）😊"
-        
-        if time_str and not response:
-            # 檢查該時段是否可預約
+            logger.info(f"用戶可能想更改預約日期為: {new_date_str}")
+            print(f"[LOG] 用戶可能想更改預約日期為: {new_date_str}")
+            
+            # 更新預約日期並重置狀態
+            user_service.update_user_info(user_id, {'booking_date': new_date_str})
+            
+            # 查詢新日期的可用時段
             try:
-                date_str = user_info.get('booking_date')
-                logger.info(f"查詢 {date_str} {time_str} 是否可預約")
-                print(f"[LOG] 查詢 {date_str} {time_str} 是否可預約")
-                
-                slots = calendar_service.get_available_slots_by_date(date_str)
+                logger.info(f"查詢 {new_date_str} 可預約時段")
+                print(f"[LOG] 查詢 {new_date_str} 可預約時段")
+                slots = calendar_service.get_available_slots_by_date(new_date_str)
                 logger.info(f"可用時段: {slots}")
                 print(f"[LOG] 可用時段: {slots}")
                 
-                # 檢查選擇的時段是否可用
-                if time_str in slots:
-                    # 獲取所選服務的時長
-                    selected_service = user_info.get('selected_service', '美容服務預約')
-                    duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
+                # 顯示可用時段
+                if len(slots) > 10:
+                    morning_slots = [s for s in slots if int(s.split(':')[0]) < 12]
+                    afternoon_slots = [s for s in slots if 12 <= int(s.split(':')[0]) < 18]
+                    evening_slots = [s for s in slots if int(s.split(':')[0]) >= 18]
                     
-                    # 計算結束時間
-                    hour, minute = map(int, time_str.split(':'))
-                    start_datetime = datetime.strptime(f"{date_str} {hour}:{minute}", "%Y-%m-%d %H:%M")
-                    end_datetime = start_datetime + timedelta(hours=duration_hours)
-                    end_time_str = end_datetime.strftime("%H:%M")
-                    
-                    response = f"您選擇了 {date_str} {time_str}-{end_time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
-                    
-                    # 保存時間信息到用戶資料中
-                    user_service.update_user_info(user_id, {'booking_time': time_str, 'last_message': response})
+                    slots_summary = f"早上: {', '.join(morning_slots[:3])}...\n下午: {', '.join(afternoon_slots[:3])}...\n晚上: {', '.join(evening_slots[:3])}..."
+                    response = f"{new_date_str} 這天大部分時段都還有空位！\n\n{slots_summary}\n\n請直接告訴我您想要的時間（例如：14:00 或 2點半）😊"
+                elif slots:
+                    # 如果時段較少，全部顯示
+                    slot_text = '\n'.join([f"{s}" for s in slots])
+                    response = f"{new_date_str} 這天目前可預約的時段有：\n{slot_text}\n\n請問您想選哪一個時段呢？😊"
                 else:
-                    if slots:
-                        morning_slots = [s for s in slots if int(s.split(':')[0]) < 12]
-                        afternoon_slots = [s for s in slots if 12 <= int(s.split(':')[0]) < 18]
-                        evening_slots = [s for s in slots if int(s.split(':')[0]) >= 18]
-                        
-                        slots_summary = f"早上: {', '.join(morning_slots[:3] if morning_slots else ['無'])}\n下午: {', '.join(afternoon_slots[:3] if afternoon_slots else ['無'])}\n晚上: {', '.join(evening_slots[:3] if evening_slots else ['無'])}"
-                        response = f"抱歉，{time_str} 時段已被預約。\n\n{date_str} 可預約的時段有：\n{slots_summary}\n\n請選擇其他時段或輸入新的日期。"
-                    else:
-                        response = f"抱歉，{date_str} 這天已無可預約時段，請換一天試試看喔！🥲"
+                    response = f"{new_date_str} 這天目前已無可預約時段，請換一天試試看喔！🥲"
             except Exception as e:
-                logger.error(f"檢查可用時段失敗: {str(e)}")
-                print(f"[ERROR] 檢查可用時段失敗: {e}")
+                logger.error(f"查詢可用時段失敗: {str(e)}")
+                print(f"[ERROR] 查詢可用時段失敗: {e}")
                 response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
+        
+        # 如果沒有匹配到日期格式，繼續原來的時間處理
+        if not response:
+            # 支援多種時間格式
+            logger.info(f"用戶輸入時間：{user_message}，預約日期：{user_info.get('booking_date')}")
+            print(f"[LOG] 用戶輸入時間：{user_message}，預約日期：{user_info.get('booking_date')}")
+            
+            # 處理特殊表達方式如 "2點半"
+            half_match = re.search(r"(\d{1,2})(?:點|:|\.)半", user_message)
+            if half_match:
+                hour = int(half_match.group(1))
+                # 處理12小時制轉24小時制
+                if hour < 10 and "下午" not in user_message and "晚上" not in user_message:
+                    # 上午時段保持不變
+                    pass
+                elif hour < 12:
+                    # 下午時段轉換為24小時制
+                    hour += 12
+                minute = 30
+                time_str = f"{hour:02d}:{minute:02d}"
+                logger.info(f"特殊時間格式匹配 (X點半): 時={hour}, 分={minute}, 格式化={time_str}")
+            else:
+                # 標準時間格式
+                time_match = re.search(r"(\d{1,2})[:\.](\d{1,2})", user_message)
+                if not time_match:
+                    time_match = re.search(r"(\d{1,2})點(?:(\d{1,2})分?)?", user_message)
+                
+                if time_match:
+                    hour = int(time_match.group(1))
+                    minute = int(time_match.group(2)) if time_match.lastindex > 1 and time_match.group(2) else 0
+                    
+                    # 處理12小時制轉24小時制
+                    if hour < 10 and ("下午" in user_message or "晚上" in user_message):
+                        hour += 12
+                    elif hour < 12 and not re.search(r"\d+:\d+", user_message) and "上午" not in user_message:
+                        # 如果是像"2點"這樣的表達，沒有明確指定上午/下午，默認為下午
+                        hour += 12
+                        
+                    time_str = f"{hour:02d}:{minute:02d}"
+                    logger.info(f"時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
+                else:
+                    # 直接數字可能是小時
+                    digit_match = re.search(r"^(\d{1,2})$", user_message)
+                    if digit_match:
+                        hour = int(digit_match.group(1))
+                        minute = 0
+                        
+                        # 處理12小時制轉24小時制，單獨數字默認為下午時間
+                        if hour < 12:
+                            hour += 12
+                            
+                        time_str = f"{hour:02d}:{minute:02d}"
+                        logger.info(f"純數字時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
+                    else:
+                        time_str = None
+                        logger.info(f"無法匹配時間格式: {user_message}")
+                        print(f"[LOG] 無法匹配時間格式: {user_message}")
+                        response = "請輸入你想預約的時間（例如：14:00、2點半）😊"
+            
+            if time_str and not response:
+                # 檢查該時段是否可預約
+                try:
+                    date_str = user_info.get('booking_date')
+                    logger.info(f"查詢 {date_str} {time_str} 是否可預約")
+                    print(f"[LOG] 查詢 {date_str} {time_str} 是否可預約")
+                    
+                    slots = calendar_service.get_available_slots_by_date(date_str)
+                    logger.info(f"可用時段: {slots}")
+                    print(f"[LOG] 可用時段: {slots}")
+                    
+                    # 檢查選擇的時段是否可用
+                    if time_str in slots:
+                        # 獲取所選服務的時長
+                        selected_service = user_info.get('selected_service', '美容服務預約')
+                        duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
+                        
+                        # 計算結束時間
+                        hour, minute = map(int, time_str.split(':'))
+                        start_datetime = datetime.strptime(f"{date_str} {hour}:{minute}", "%Y-%m-%d %H:%M")
+                        end_datetime = start_datetime + timedelta(hours=duration_hours)
+                        end_time_str = end_datetime.strftime("%H:%M")
+                        
+                        response = f"您選擇了 {date_str} {time_str}-{end_time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
+                        
+                        # 保存時間信息到用戶資料中
+                        user_service.update_user_info(user_id, {'booking_time': time_str, 'last_message': response})
+                    else:
+                        if slots:
+                            morning_slots = [s for s in slots if int(s.split(':')[0]) < 12]
+                            afternoon_slots = [s for s in slots if 12 <= int(s.split(':')[0]) < 18]
+                            evening_slots = [s for s in slots if int(s.split(':')[0]) >= 18]
+                            
+                            slots_summary = f"早上: {', '.join(morning_slots[:3] if morning_slots else ['無'])}\n下午: {', '.join(afternoon_slots[:3] if afternoon_slots else ['無'])}\n晚上: {', '.join(evening_slots[:3] if evening_slots else ['無'])}"
+                            response = f"抱歉，{time_str} 時段已被預約。\n\n{date_str} 可預約的時段有：\n{slots_summary}\n\n請選擇其他時段或輸入新的日期。"
+                        else:
+                            response = f"抱歉，{date_str} 這天已無可預約時段，請換一天試試看喔！🥲"
+                except Exception as e:
+                    logger.error(f"檢查可用時段失敗: {str(e)}")
+                    print(f"[ERROR] 檢查可用時段失敗: {e}")
+                    response = "抱歉，查詢預約時段時發生錯誤，請稍後再試。"
     # 前一步可能只是確認時間，實際創建預約
     if not response and "正在為您預約中" in user_info.get('last_message', ''):
         logger.info(f"繼續處理預約流程")
