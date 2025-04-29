@@ -388,7 +388,13 @@ def handle_message(event):
                         selected_service = user_info.get('selected_service', '美容服務預約')
                         duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
                         
-                        response = f"您選擇了 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
+                        # 計算結束時間
+                        hour, minute = map(int, time_str.split(':'))
+                        start_datetime = datetime.strptime(f"{date_str} {hour}:{minute}", "%Y-%m-%d %H:%M")
+                        end_datetime = start_datetime + timedelta(hours=duration_hours)
+                        end_time_str = end_datetime.strftime("%H:%M")
+                        
+                        response = f"您選擇了 {date_str} {time_str}-{end_time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
                         
                         # 保存時間信息到用戶資料中
                         user_service.update_user_info(user_id, {'booking_time': time_str, 'last_message': response})
@@ -571,7 +577,13 @@ def handle_message(event):
                     selected_service = user_info.get('selected_service', '美容服務預約')
                     duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
                     
-                    response = f"您選擇了 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
+                    # 計算結束時間
+                    hour, minute = map(int, time_str.split(':'))
+                    start_datetime = datetime.strptime(f"{date_str} {hour}:{minute}", "%Y-%m-%d %H:%M")
+                    end_datetime = start_datetime + timedelta(hours=duration_hours)
+                    end_time_str = end_datetime.strftime("%H:%M")
+                    
+                    response = f"您選擇了 {date_str} {time_str}-{end_time_str} 的「{selected_service}」服務（{duration_hours}小時）。\n\n正在為您預約中...⏳"
                     
                     # 保存時間信息到用戶資料中
                     user_service.update_user_info(user_id, {'booking_time': time_str, 'last_message': response})
@@ -688,7 +700,11 @@ def handle_message(event):
                         logger.info("用戶狀態已重置，預約記錄已保存")
                         print("[LOG] 用戶狀態已重置，預約記錄已保存")
                         
-                        response = f"預約成功！🎉\n已幫您預約 {booking_date} {booking_time} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與您相見！\n\n🔔 我們將在預約前24小時、2小時和10分鐘發送提醒\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
+                        # 將開始和結束時間格式化為更易讀的形式
+                        start_time_display = start_dt.strftime('%H:%M')
+                        end_time_display = end_dt.strftime('%H:%M')
+                        
+                        response = f"預約成功！🎉\n已幫您預約 {booking_date} {start_time_display}-{end_time_display} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與您相見！\n\n🔔 我們將在預約前24小時、2小時和10分鐘發送提醒\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
                     except Exception as e:
                         error_msg = str(e)
                         logger.error(f"預約失敗: {error_msg}")
