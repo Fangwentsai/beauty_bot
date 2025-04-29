@@ -94,17 +94,68 @@ handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 if os.getenv('RENDER'):
     # Google Calendar 憑證
     if os.getenv('GOOGLE_CALENDAR_CREDENTIALS'):
-        calendar_creds = json.loads(os.getenv('GOOGLE_CALENDAR_CREDENTIALS'))
-        with open('google_calendar_credentials.json', 'w') as f:
-            json.dump(calendar_creds, f)
-        os.environ['GOOGLE_CALENDAR_CREDENTIALS'] = 'google_calendar_credentials.json'
+        try:
+            logger.info("開始處理 Google Calendar 憑證")
+            print("[LOG] 開始處理 Google Calendar 憑證")
+            calendar_creds_json = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
+            logger.info(f"憑證環境變數長度: {len(calendar_creds_json)}")
+            print(f"[LOG] 憑證環境變數長度: {len(calendar_creds_json)}")
+            
+            calendar_creds = json.loads(calendar_creds_json)
+            logger.info(f"憑證 JSON 解析成功，包含的鍵: {', '.join(calendar_creds.keys())}")
+            print(f"[LOG] 憑證 JSON 解析成功，包含的鍵: {', '.join(calendar_creds.keys())}")
+            
+            with open('google_calendar_credentials.json', 'w') as f:
+                json.dump(calendar_creds, f)
+            
+            # 檢查文件是否生成成功
+            if os.path.exists('google_calendar_credentials.json'):
+                file_size = os.path.getsize('google_calendar_credentials.json')
+                logger.info(f"憑證檔案建立成功，大小: {file_size} 字節")
+                print(f"[LOG] 憑證檔案建立成功，大小: {file_size} 字節")
+            else:
+                logger.error("憑證檔案未成功建立")
+                print("[ERROR] 憑證檔案未成功建立")
+                
+            os.environ['GOOGLE_CALENDAR_CREDENTIALS'] = 'google_calendar_credentials.json'
+            logger.info(f"GOOGLE_CALENDAR_CREDENTIALS 環境變數設置為: {os.getenv('GOOGLE_CALENDAR_CREDENTIALS')}")
+            print(f"[LOG] GOOGLE_CALENDAR_CREDENTIALS 環境變數設置為: {os.getenv('GOOGLE_CALENDAR_CREDENTIALS')}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Google Calendar 憑證 JSON 解析失敗: {str(e)}")
+            print(f"[ERROR] Google Calendar 憑證 JSON 解析失敗: {str(e)}")
+        except Exception as e:
+            logger.error(f"處理 Google Calendar 憑證時發生錯誤: {str(e)}")
+            print(f"[ERROR] 處理 Google Calendar 憑證時發生錯誤: {str(e)}")
+    else:
+        logger.error("GOOGLE_CALENDAR_CREDENTIALS 環境變數未設置")
+        print("[ERROR] GOOGLE_CALENDAR_CREDENTIALS 環境變數未設置")
     
     # Firebase 憑證
     if os.getenv('FIREBASE_CREDENTIALS'):
-        firebase_creds = json.loads(os.getenv('FIREBASE_CREDENTIALS'))
-        with open('firebase_credentials.json', 'w') as f:
-            json.dump(firebase_creds, f)
-        os.environ['FIREBASE_CREDENTIALS'] = 'firebase_credentials.json'
+        try:
+            logger.info("開始處理 Firebase 憑證")
+            print("[LOG] 開始處理 Firebase 憑證")
+            firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS')
+            firebase_creds = json.loads(firebase_creds_json)
+            
+            with open('firebase_credentials.json', 'w') as f:
+                json.dump(firebase_creds, f)
+                
+            # 檢查文件是否生成成功
+            if os.path.exists('firebase_credentials.json'):
+                file_size = os.path.getsize('firebase_credentials.json')
+                logger.info(f"Firebase 憑證檔案建立成功，大小: {file_size} 字節")
+                print(f"[LOG] Firebase 憑證檔案建立成功，大小: {file_size} 字節")
+            
+            os.environ['FIREBASE_CREDENTIALS'] = 'firebase_credentials.json'
+            logger.info(f"FIREBASE_CREDENTIALS 環境變數設置為: {os.getenv('FIREBASE_CREDENTIALS')}")
+            print(f"[LOG] FIREBASE_CREDENTIALS 環境變數設置為: {os.getenv('FIREBASE_CREDENTIALS')}")
+        except Exception as e:
+            logger.error(f"處理 Firebase 憑證時發生錯誤: {str(e)}")
+            print(f"[ERROR] 處理 Firebase 憑證時發生錯誤: {str(e)}")
+    else:
+        logger.error("FIREBASE_CREDENTIALS 環境變數未設置")
+        print("[ERROR] FIREBASE_CREDENTIALS 環境變數未設置")
 
 # 初始化服務
 chatgpt_service = ChatGPTService()
@@ -507,10 +558,18 @@ def handle_message(event):
         booking_time = user_info.get('booking_time')
         selected_service = user_info.get('selected_service', '美容服務預約')
         
+        logger.info(f"預約資訊：日期={booking_date}, 時間={booking_time}, 服務={selected_service}")
+        print(f"[LOG] 預約資訊：日期={booking_date}, 時間={booking_time}, 服務={selected_service}")
+        
         if booking_date and booking_time:
             try:
                 # 再次檢查時段是否可用
+                logger.info(f"再次檢查 {booking_date} {booking_time} 是否可預約")
+                print(f"[LOG] 再次檢查 {booking_date} {booking_time} 是否可預約")
                 slots = calendar_service.get_available_slots_by_date(booking_date)
+                logger.info(f"可用時段: {slots}")
+                print(f"[LOG] 可用時段: {slots}")
+                
                 if booking_time in slots:
                     # 建立 Google Calendar 預約
                     try:
@@ -521,9 +580,22 @@ def handle_message(event):
                         logger.info(f"嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                         print(f"[LOG] 嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
                         
+                        # 檢查用戶資訊
+                        logger.info(f"用戶資訊：{json.dumps(user_info, ensure_ascii=False)}")
+                        print(f"[LOG] 用戶資訊：{json.dumps(user_info, ensure_ascii=False)}")
+                        
+                        # 檢查 calendar_service 狀態
+                        logger.info(f"Calendar service 類型: {type(calendar_service).__name__}")
+                        print(f"[LOG] Calendar service 類型: {type(calendar_service).__name__}")
+                        
+                        # 創建預約前的紀錄點
+                        logger.info("即將調用 create_booking 方法")
+                        print("[LOG] 即將調用 create_booking 方法")
+                        
                         event_result = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
-                        logger.info(f"Google Calendar 預約創建成功: {event_result}")
-                        print(f"[LOG] Google Calendar 預約創建成功: {event_result}")
+                        
+                        logger.info(f"create_booking 調用成功返回: {json.dumps(event_result, ensure_ascii=False)}")
+                        print(f"[LOG] create_booking 調用成功返回: {json.dumps(event_result, ensure_ascii=False)}")
                         
                         # 確認事件已成功建立
                         event_id = event_result.get('id')
@@ -531,12 +603,20 @@ def handle_message(event):
                         
                         if not event_id:
                             logger.error("無法獲取預約 ID")
+                            print("[ERROR] 無法獲取預約 ID")
                             raise Exception("無法獲取預約 ID，預約可能未成功建立")
                         
                         # 驗證一次事件確實存在
+                        logger.info(f"驗證事件 {event_id} 是否存在")
+                        print(f"[LOG] 驗證事件 {event_id} 是否存在")
                         verified_event = calendar_service.get_event_by_id(event_id)
-                        if not verified_event:
+                        
+                        if verified_event:
+                            logger.info(f"驗證成功：事件存在 - {json.dumps(verified_event, ensure_ascii=False)}")
+                            print(f"[LOG] 驗證成功：事件存在")
+                        else:
                             logger.error(f"無法驗證事件存在: {event_id}")
+                            print(f"[ERROR] 無法驗證事件存在: {event_id}")
                             raise Exception("無法確認預約已建立，請稍後再試")
                         
                         # 寫入 Firebase booking history
@@ -549,8 +629,8 @@ def handle_message(event):
                             'calendar_event_id': event_id,
                             'calendar_event_link': event_link
                         }
-                        logger.info(f"嘗試寫入 Firebase: {booking_data}")
-                        print(f"[LOG] 嘗試寫入 Firebase: {booking_data}")
+                        logger.info(f"嘗試寫入 Firebase: {json.dumps(booking_data, ensure_ascii=False)}")
+                        print(f"[LOG] 嘗試寫入 Firebase: {json.dumps(booking_data, ensure_ascii=False)}")
                         
                         user_service.add_booking(user_id, booking_data)
                         logger.info(f"Firebase 寫入成功")
@@ -564,6 +644,8 @@ def handle_message(event):
                             'selected_service': '',
                             'last_booking': booking_data
                         })
+                        logger.info("用戶狀態已重置，預約記錄已保存")
+                        print("[LOG] 用戶狀態已重置，預約記錄已保存")
                         
                         response = f"預約成功！🎉\n已幫您預約 {booking_date} {booking_time} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與您相見！\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
                     except Exception as e:
@@ -571,16 +653,32 @@ def handle_message(event):
                         logger.error(f"預約失敗: {error_msg}")
                         print(f"[ERROR] 預約失敗: {error_msg}")
                         
+                        # 詳細診斷信息
+                        logger.error(f"異常類型: {type(e).__name__}")
+                        print(f"[ERROR] 異常類型: {type(e).__name__}")
+                        
+                        import traceback
+                        tb = traceback.format_exc()
+                        logger.error(f"堆疊追蹤:\n{tb}")
+                        print(f"[ERROR] 堆疊追蹤:\n{tb}")
+                        
                         if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
                             response = "抱歉，Google Calendar 憑證可能有問題，請聯繫管理員。"
                         else:
-                            response = f"抱歉，預約時發生錯誤：{error_msg[:50]}...\n請稍後再試。"
+                            response = f"抱歉，預約時發生錯誤：{error_msg}。請稍後再試。"
                 else:
                     # 時段已不可用
                     response = f"抱歉，{booking_time} 時段已被預約。請選擇其他時段。"
             except Exception as e:
-                logger.error(f"預約流程發生錯誤: {str(e)}")
-                print(f"[ERROR] 預約流程發生錯誤: {e}")
+                error_msg = str(e)
+                logger.error(f"預約流程發生錯誤: {error_msg}")
+                print(f"[ERROR] 預約流程發生錯誤: {error_msg}")
+                
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"堆疊追蹤:\n{tb}")
+                print(f"[ERROR] 堆疊追蹤:\n{tb}")
+                
                 response = "抱歉，預約過程中發生問題，請稍後再試。"
     # 其他一般對話
     if not response:
