@@ -21,8 +21,9 @@ class GoogleCalendarService:
             )
             self.service = build('calendar', 'v3', credentials=creds)
             
-            # 默認使用主要日曆，但也提供日曆ID的環境變數支持
-            calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
+            # 使用公開日曆 ID，而不是服務帳戶的主日曆
+            default_calendar_id = "406b890a3f66f6a0863bc4dbf02b1be58b38ee69d30420393f6df11e946fa305@group.calendar.google.com"
+            calendar_id = os.getenv('GOOGLE_CALENDAR_ID', default_calendar_id)
             self.calendar_id = calendar_id
             
             logger.info(f"使用日曆ID: {self.calendar_id}")
