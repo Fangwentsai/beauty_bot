@@ -20,6 +20,28 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 服務項目及時長（小時）
+SERVICE_DURATIONS = {
+    "日式美睫": 2,
+    "睫毛管理": 1,
+    "霧唇": 3,
+    "霧眉": 3, 
+    "髮際線": 3,
+    "美睫教學": 4,
+    "美容服務預約": 1  # 默認服務
+}
+
+# 服務列表格式化顯示
+SERVICE_LIST = """
+𝔽𝕒𝕟𝕟𝕪 𝕓𝕖𝕒𝕦𝕥𝕪 服務項目：
+✨ 日式美睫 (2小時)
+✨ 睫毛管理 (1小時)
+✨ 霧唇 (3小時)
+✨ 霧眉 (3小時)
+✨ 髮際線 (3小時)
+✨ 美睫教學 (4小時)
+"""
+
 app = Flask(__name__)
 
 # Line Bot v3 設定
@@ -63,7 +85,7 @@ def callback():
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     import re
-    from datetime import datetime
+    from datetime import datetime, timedelta
     user_id = event.source.user_id
     user_info = user_service.get_user_info(user_id)
     user_message = event.message.text.strip()
@@ -74,10 +96,15 @@ def handle_message(event):
     logger.info(f"目前用戶資料: {user_info}")
 
     greetings = ['你好', '哈囉', 'hi', 'hello', '您好', '嗨', '哈囉～', '哈囉!']
-    in_booking_flow = (user_info.get('state') in ['booking_ask_date', 'booking_ask_time']) or ("預約" in user_message)
-
+    in_booking_flow = (user_info.get('state') in ['booking_ask_service', 'booking_ask_date', 'booking_ask_time']) or ("預約" in user_message)
+    
+    # 檢查是否是服務查詢
+    if "服務" in user_message and ("項目" in user_message or "介紹" in user_message or "有哪些" in user_message):
+        response = f"{SERVICE_LIST}\n請問您想預約哪項服務呢？"
+        user_service.set_state(user_id, 'booking_ask_service')
+        
     # 如果是初次互動或打招呼，展示品牌形象
-    if user_message.lower() in greetings:
+    elif user_message.lower() in greetings:
         if not user_info.get('name'):
             response = "哈囉！歡迎來到 Fanny Beauty 美學 💄 我是您的專屬美容顧問！請問我可以怎麼稱呼您呢？😊"
         else:
@@ -99,14 +126,30 @@ def handle_message(event):
         user_info = user_service.get_user_info(user_id)
         logger.info(f"更新後用戶資料: {user_info}")
 
+    # 處理服務選擇階段
+    if not response and user_info.get('state') == 'booking_ask_service':
+        selected_service = None
+        for service in SERVICE_DURATIONS.keys():
+            if service in user_message:
+                selected_service = service
+                break
+        
+        if selected_service:
+            user_service.update_user_info(user_id, {'selected_service': selected_service})
+            user_service.set_state(user_id, 'booking_ask_date')
+            logger.info(f"用戶選擇服務: {selected_service}")
+            response = f"您選擇了「{selected_service}」服務（{SERVICE_DURATIONS[selected_service]}小時），請問您想預約哪一天呢？（例如：2025-05-03 或 5/3）💖"
+        else:
+            response = f"抱歉，我們沒有提供這項服務。以下是我們的服務項目：\n{SERVICE_LIST}\n請選擇一項服務進行預約。"
+
     # 建檔流程結束後自動引導預約
     if not response and not in_booking_flow and user_info.get('name') and user_info.get('phone'):
-        user_service.set_state(user_id, 'booking_ask_date')
+        user_service.set_state(user_id, 'booking_ask_service')
         name = user_info.get('name', '').strip()
         logger.info(f"用戶完成建檔，名字為: '{name}'")
-        response = f"謝謝你，{name}！請問你想預約哪一天呢？（例如：2025-05-03 或 5/3）💖"
+        response = f"謝謝你，{name}！請問您想預約哪項服務呢？\n{SERVICE_LIST}"
     # 預約流程
-    elif not response and (user_info.get('state') == 'booking_ask_date' or ("預約" in user_message)):
+    elif not response and (user_info.get('state') == 'booking_ask_date' or ("預約" in user_message and user_info.get('selected_service'))):
         # 處理日期時間組合型輸入，例如 "5/5 14:00" 或 "5/5 2.半"
         # 先嘗試分離日期和時間
         combined_match = re.search(r"(\d{1,2})[/\-.](\d{1,2})(?:[^\d]+(\d{1,2})(?:[:.點](\d{1,2}))?(?:分|半)?)?", user_message)
@@ -145,26 +188,30 @@ def handle_message(event):
                     if time_str in slots:
                         # 直接預約
                         try:
-                            start_dt = datetime.strptime(date_str + ' ' + time_str, "%Y-%m-%d %H:%M")
-                            end_dt = start_dt.replace(minute=start_dt.minute+30 if start_dt.minute < 30 else 0, 
-                                                    hour=start_dt.hour if start_dt.minute < 30 else start_dt.hour+1)
-                            logger.info(f"嘗試創建預約：開始={start_dt}, 結束={end_dt}")
-                            print(f"[LOG] 嘗試創建預約：開始={start_dt}, 結束={end_dt}")
+                            # 獲取所選服務的時長
+                            selected_service = user_info.get('selected_service', '美容服務預約')
+                            duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
                             
-                            event_link = calendar_service.create_booking(start_dt, end_dt, user_info, '美容服務預約')
+                            start_dt = datetime.strptime(date_str + ' ' + time_str, "%Y-%m-%d %H:%M")
+                            end_dt = start_dt + timedelta(hours=duration_hours)
+                            
+                            logger.info(f"嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
+                            print(f"[LOG] 嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
+                            
+                            event_link = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
                             logger.info(f"Google Calendar 預約創建成功: {event_link}")
                             print(f"[LOG] Google Calendar 預約創建成功: {event_link}")
                             
                             booking_data = {
+                                'service': selected_service,
                                 'start_time': start_dt.isoformat(),
                                 'end_time': end_dt.isoformat(),
-                                'service': '美容服務預約',
                                 'status': 'confirmed',
                                 'created_at': datetime.now().isoformat()
                             }
                             user_service.add_booking(user_id, booking_data)
-                            user_service.set_state(user_id, '', booking_date='', booking_time='')
-                            response = f"預約成功！🎉\n已幫你預約 {date_str} {time_str}，期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
+                            user_service.set_state(user_id, '', booking_date='', booking_time='', selected_service='')
+                            response = f"預約成功！🎉\n已幫你預約 {date_str} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
                         except Exception as e:
                             logger.error(f"預約失敗: {str(e)}")
                             print(f"[ERROR] 預約失敗: {e}")
@@ -320,20 +367,25 @@ def handle_message(event):
                 if time_str in slots:
                     # 建立 Google Calendar 預約
                     try:
-                        start_dt = datetime.strptime(user_info.get('booking_date') + ' ' + time_str, "%Y-%m-%d %H:%M")
-                        end_dt = start_dt.replace(minute=start_dt.minute+30 if start_dt.minute < 30 else 0, hour=start_dt.hour if start_dt.minute < 30 else start_dt.hour+1)
-                        logger.info(f"嘗試創建預約：開始={start_dt}, 結束={end_dt}")
-                        print(f"[LOG] 嘗試創建預約：開始={start_dt}, 結束={end_dt}")
+                        # 獲取所選服務的時長
+                        selected_service = user_info.get('selected_service', '美容服務預約')
+                        duration_hours = SERVICE_DURATIONS.get(selected_service, 1)  # 默認1小時
                         
-                        event_link = calendar_service.create_booking(start_dt, end_dt, user_info, '美容服務預約')
+                        start_dt = datetime.strptime(user_info.get('booking_date') + ' ' + time_str, "%Y-%m-%d %H:%M")
+                        end_dt = start_dt + timedelta(hours=duration_hours)
+                        
+                        logger.info(f"嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
+                        print(f"[LOG] 嘗試創建預約：服務={selected_service}, 時長={duration_hours}小時, 開始={start_dt}, 結束={end_dt}")
+                        
+                        event_link = calendar_service.create_booking(start_dt, end_dt, user_info, selected_service)
                         logger.info(f"Google Calendar 預約創建成功: {event_link}")
                         print(f"[LOG] Google Calendar 預約創建成功: {event_link}")
                         
                         # 寫入 Firebase booking history
                         booking_data = {
+                            'service': selected_service,
                             'start_time': start_dt.isoformat(),
                             'end_time': end_dt.isoformat(),
-                            'service': '美容服務預約',
                             'status': 'confirmed',
                             'created_at': datetime.now().isoformat()
                         }
@@ -344,8 +396,8 @@ def handle_message(event):
                         logger.info(f"Firebase 寫入成功")
                         print(f"[LOG] Firebase 寫入成功")
                         
-                        user_service.set_state(user_id, '', booking_date='', booking_time='')
-                        response = f"預約成功！🎉\n已幫你預約 {user_info.get('booking_date')} {time_str}，期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
+                        user_service.set_state(user_id, '', booking_date='', booking_time='', selected_service='')
+                        response = f"預約成功！🎉\n已幫你預約 {user_info.get('booking_date')} {time_str} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與你相見！\n如需更改請隨時告訴我。"
                     except Exception as e:
                         logger.error(f"Google Calendar/Firebase 寫入失敗：{str(e)}")
                         print(f"[ERROR] Google Calendar/Firebase 寫入失敗：{e}")
