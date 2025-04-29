@@ -20,9 +20,19 @@ class GoogleCalendarService:
                 scopes=SCOPES
             )
             self.service = build('calendar', 'v3', credentials=creds)
-            self.calendar_id = 'primary'  # 使用主要行事曆
+            
+            # 默認使用主要日曆，但也提供日曆ID的環境變數支持
+            calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
+            self.calendar_id = calendar_id
+            
+            logger.info(f"使用日曆ID: {self.calendar_id}")
+            print(f"[LOG] 使用日曆ID: {self.calendar_id}")
+            
             logger.info("Google Calendar 服務初始化成功")
             print("[LOG] Google Calendar 服務初始化成功")
+            
+            # 初始化後立即檢查日曆信息
+            self._check_calendar_info()
         except Exception as e:
             logger.error(f"Google Calendar 服務初始化失敗: {str(e)}")
             print(f"[ERROR] Google Calendar 服務初始化失敗: {str(e)}")
@@ -374,4 +384,92 @@ class GoogleCalendarService:
             # 檢查憑證
             self._check_credentials()
             
+            return False 
+
+    def _check_calendar_info(self):
+        """檢查當前使用的日曆信息"""
+        try:
+            logger.info(f"檢查日曆 {self.calendar_id} 的詳細信息")
+            print(f"[LOG] 檢查日曆 {self.calendar_id} 的詳細信息")
+            
+            if self.calendar_id == 'primary':
+                # 獲取主日曆詳細信息
+                calendar_info = self.service.calendars().get(calendarId=self.calendar_id).execute()
+                logger.info(f"主日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+                print(f"[LOG] 主日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+                logger.info(f"當前使用的日曆: {calendar_info.get('summary')} (ID: {self.calendar_id})")
+                print(f"[LOG] 當前使用的日曆: {calendar_info.get('summary')} (ID: {self.calendar_id})")
+            else:
+                # 獲取指定ID日曆的詳細信息
+                try:
+                    calendar_info = self.service.calendars().get(calendarId=self.calendar_id).execute()
+                    logger.info(f"指定日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+                    print(f"[LOG] 指定日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+                    logger.info(f"當前使用的日曆: {calendar_info.get('summary')} (ID: {self.calendar_id})")
+                    print(f"[LOG] 當前使用的日曆: {calendar_info.get('summary')} (ID: {self.calendar_id})")
+                except Exception as cal_error:
+                    logger.error(f"獲取指定日曆信息失敗: {str(cal_error)}")
+                    print(f"[ERROR] 獲取指定日曆信息失敗: {str(cal_error)}")
+                    
+                    # 嘗試列出所有可用的日曆
+                    self._list_available_calendars()
+                    
+                    # 如果指定的日曆ID不可用，回退到使用主日曆
+                    logger.warning(f"自動回退到使用主日曆")
+                    print(f"[WARNING] 自動回退到使用主日曆")
+                    self.calendar_id = 'primary'
+                    
+                    # 再次獲取主日曆信息
+                    calendar_info = self.service.calendars().get(calendarId=self.calendar_id).execute()
+                    logger.info(f"主日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+                    print(f"[LOG] 主日曆信息: {json.dumps(calendar_info, ensure_ascii=False)}")
+        except Exception as e:
+            logger.error(f"檢查日曆信息失敗: {str(e)}")
+            print(f"[ERROR] 檢查日曆信息失敗: {str(e)}")
+    
+    def _list_available_calendars(self):
+        """列出所有可用的日曆"""
+        try:
+            logger.info("獲取所有可用日曆")
+            print("[LOG] 獲取所有可用日曆")
+            calendar_list = self.service.calendarList().list().execute()
+            calendars = calendar_list.get('items', [])
+            
+            if calendars:
+                logger.info(f"找到 {len(calendars)} 個可用日曆:")
+                print(f"[LOG] 找到 {len(calendars)} 個可用日曆:")
+                for calendar in calendars:
+                    logger.info(f"- {calendar.get('summary')} (ID: {calendar.get('id')})")
+                    print(f"[LOG] - {calendar.get('summary')} (ID: {calendar.get('id')})")
+            else:
+                logger.warning("未找到任何可用日曆")
+                print("[WARNING] 未找到任何可用日曆")
+                
+        except Exception as e:
+            logger.error(f"列出可用日曆失敗: {str(e)}")
+            print(f"[ERROR] 列出可用日曆失敗: {str(e)}")
+                
+    def set_calendar_id(self, calendar_id):
+        """設置要使用的日曆ID"""
+        try:
+            logger.info(f"嘗試切換日曆ID從 {self.calendar_id} 到 {calendar_id}")
+            print(f"[LOG] 嘗試切換日曆ID從 {self.calendar_id} 到 {calendar_id}")
+            
+            # 驗證日曆ID是否有效
+            try:
+                calendar_info = self.service.calendars().get(calendarId=calendar_id).execute()
+                self.calendar_id = calendar_id
+                logger.info(f"成功切換到日曆: {calendar_info.get('summary')} (ID: {calendar_id})")
+                print(f"[LOG] 成功切換到日曆: {calendar_info.get('summary')} (ID: {calendar_id})")
+                return True
+            except Exception as e:
+                logger.error(f"切換日曆失敗: {str(e)}")
+                print(f"[ERROR] 切換日曆失敗: {str(e)}")
+                logger.warning("保持使用原有日曆ID")
+                print(f"[WARNING] 保持使用原有日曆ID: {self.calendar_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"設置日曆ID時發生錯誤: {str(e)}")
+            print(f"[ERROR] 設置日曆ID時發生錯誤: {str(e)}")
             return False 

@@ -801,6 +801,102 @@ def test_calendar_api():
             'message': f'測試發生錯誤: {error_msg}'
         }, 500
 
+# 添加查看日曆信息的API端點
+@app.route("/calendar-info", methods=['GET'])
+def calendar_info():
+    try:
+        logger.info("查詢日曆信息")
+        print("[LOG] 查詢日曆信息")
+        
+        # 獲取當前使用的日曆ID
+        current_calendar_id = calendar_service.calendar_id
+        
+        # 列出所有可用的日曆
+        calendar_list = calendar_service.service.calendarList().list().execute()
+        calendars = calendar_list.get('items', [])
+        
+        calendar_info = []
+        for calendar in calendars:
+            calendar_info.append({
+                'id': calendar.get('id'),
+                'summary': calendar.get('summary'),
+                'description': calendar.get('description', ''),
+                'primary': calendar.get('primary', False),
+                'timeZone': calendar.get('timeZone', '')
+            })
+        
+        # 獲取當前使用的日曆詳細信息
+        try:
+            current_calendar = calendar_service.service.calendars().get(
+                calendarId=current_calendar_id
+            ).execute()
+        except Exception as e:
+            logger.error(f"獲取當前日曆詳細信息失敗: {str(e)}")
+            print(f"[ERROR] 獲取當前日曆詳細信息失敗: {str(e)}")
+            current_calendar = {'id': current_calendar_id, 'summary': '無法獲取詳細信息'}
+        
+        return {
+            'status': 'success',
+            'current_calendar': {
+                'id': current_calendar.get('id'),
+                'summary': current_calendar.get('summary', ''),
+                'description': current_calendar.get('description', ''),
+                'timeZone': current_calendar.get('timeZone', '')
+            },
+            'available_calendars': calendar_info
+        }
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"獲取日曆信息失敗: {error_msg}")
+        print(f"[ERROR] 獲取日曆信息失敗: {error_msg}")
+        
+        return {
+            'status': 'error',
+            'message': f'獲取日曆信息失敗: {error_msg}'
+        }, 500
+
+# 添加設置日曆ID的API端點
+@app.route("/set-calendar", methods=['POST'])
+def set_calendar():
+    try:
+        data = request.get_json()
+        
+        if not data or 'calendar_id' not in data:
+            return {
+                'status': 'error',
+                'message': '缺少必要的calendar_id參數'
+            }, 400
+            
+        calendar_id = data['calendar_id']
+        logger.info(f"嘗試設置日曆ID: {calendar_id}")
+        print(f"[LOG] 嘗試設置日曆ID: {calendar_id}")
+        
+        # 設置日曆ID
+        result = calendar_service.set_calendar_id(calendar_id)
+        
+        if result:
+            return {
+                'status': 'success',
+                'message': f'成功設置日曆ID: {calendar_id}',
+                'calendar_id': calendar_id
+            }
+        else:
+            return {
+                'status': 'error',
+                'message': f'設置日曆ID失敗: {calendar_id}'
+            }, 500
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"設置日曆ID失敗: {error_msg}")
+        print(f"[ERROR] 設置日曆ID失敗: {error_msg}")
+        
+        return {
+            'status': 'error',
+            'message': f'設置日曆ID失敗: {error_msg}'
+        }, 500
+
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
