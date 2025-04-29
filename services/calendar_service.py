@@ -241,8 +241,8 @@ class GoogleCalendarService:
             date_end = date_start.replace(hour=20, minute=0)
             
             # 注意：將時區信息加入到ISO格式字符串中
-            timeMin = date_start.isoformat() + 'Z'
-            timeMax = date_end.isoformat() + 'Z'
+            timeMin = date_start.isoformat()
+            timeMax = date_end.isoformat()
             
             logger.info(f"查詢時間範圍: {timeMin} 到 {timeMax}")
             print(f"[LOG] 查詢時間範圍: {timeMin} 到 {timeMax}")
@@ -254,6 +254,7 @@ class GoogleCalendarService:
                     calendarId=self.calendar_id,
                     timeMin=timeMin,
                     timeMax=timeMax,
+                    timeZone='Asia/Taipei',
                     singleEvents=True,
                     orderBy='startTime'
                 ).execute()
@@ -265,36 +266,31 @@ class GoogleCalendarService:
                 print(f"[ERROR] 調用 Google Calendar API 列出事件失敗: {str(api_error)}")
                 raise
                 
-            booked_slots = []
-            for event in events_result.get('items', []):
-                start = event['start'].get('dateTime')
-                if start:
-                    try:
-                        # 處理時區
-                        event_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
-                        booked_slots.append(event_time)
-                        logger.info(f"找到已預約時段: {event_time}")
-                        print(f"[LOG] 找到已預約時段: {event_time}")
-                    except Exception as time_error:
-                        logger.error(f"解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
-                        print(f"[ERROR] 解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
+                booked_slots = []
+                for event in events_result.get('items', []):
+                    start = event['start'].get('dateTime')
+                    if start:
+                        try:
+                            # 處理時區
+                            event_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                            # 轉換為當地時間格式的字符串，僅保留時分
+                            booked_time_str = event_time.strftime('%H:%M')
+                            booked_slots.append(booked_time_str)
+                            logger.info(f"找到已預約時段: {event_time} -> {booked_time_str}")
+                            print(f"[LOG] 找到已預約時段: {event_time} -> {booked_time_str}")
+                        except Exception as time_error:
+                            logger.error(f"解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
+                            print(f"[ERROR] 解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
             
-            available_slots = []
-            current = date_start
-            while current < date_end:
-                # 檢查當前時段是否已被預約
-                is_available = True
-                for booked in booked_slots:
-                    # 檢查當前時段是否與已預約時段重疊（考慮30分鐘間隔）
-                    if abs((current - booked).total_seconds()) < 60:  # 1分鐘寬容度
-                        is_available = False
-                        break
-                        
-                if is_available:
-                    slot = current.strftime('%H:%M')
-                    available_slots.append(slot)
-                
-                current += timedelta(minutes=30)
+                available_slots = []
+                current = date_start
+                while current < date_end:
+                    # 檢查當前時段是否已被預約
+                    current_time_str = current.strftime('%H:%M')
+                    if current_time_str not in booked_slots:
+                        available_slots.append(current_time_str)
+                    
+                    current += timedelta(minutes=30)
             
             logger.info(f"可用時段數量: {len(available_slots)}")
             print(f"[LOG] 可用時段數量: {len(available_slots)}")

@@ -485,6 +485,13 @@ def handle_message(event):
         half_match = re.search(r"(\d{1,2})(?:點|:|\.)半", user_message)
         if half_match:
             hour = int(half_match.group(1))
+            # 處理12小時制轉24小時制
+            if hour < 10 and "下午" not in user_message and "晚上" not in user_message:
+                # 上午時段保持不變
+                pass
+            elif hour < 12:
+                # 下午時段轉換為24小時制
+                hour += 12
             minute = 30
             time_str = f"{hour:02d}:{minute:02d}"
             logger.info(f"特殊時間格式匹配 (X點半): 時={hour}, 分={minute}, 格式化={time_str}")
@@ -497,6 +504,14 @@ def handle_message(event):
             if time_match:
                 hour = int(time_match.group(1))
                 minute = int(time_match.group(2)) if time_match.lastindex > 1 and time_match.group(2) else 0
+                
+                # 處理12小時制轉24小時制
+                if hour < 10 and ("下午" in user_message or "晚上" in user_message):
+                    hour += 12
+                elif hour < 12 and not re.search(r"\d+:\d+", user_message) and "上午" not in user_message:
+                    # 如果是像"2點"這樣的表達，沒有明確指定上午/下午，默認為下午
+                    hour += 12
+                    
                 time_str = f"{hour:02d}:{minute:02d}"
                 logger.info(f"時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
             else:
@@ -505,6 +520,11 @@ def handle_message(event):
                 if digit_match:
                     hour = int(digit_match.group(1))
                     minute = 0
+                    
+                    # 處理12小時制轉24小時制，單獨數字默認為下午時間
+                    if hour < 12:
+                        hour += 12
+                        
                     time_str = f"{hour:02d}:{minute:02d}"
                     logger.info(f"純數字時間匹配: 時={hour}, 分={minute}, 格式化={time_str}")
                 else:
