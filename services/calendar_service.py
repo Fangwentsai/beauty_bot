@@ -61,89 +61,149 @@ class GoogleCalendarService:
 
     def create_booking(self, start_time, end_time, user_info, service):
         """創建預約"""
-        event = {
-            'summary': f'{user_info["name"]} - {service}',
-            'description': f'客戶：{user_info["name"]}\n電話：{user_info["phone"]}\n服務：{service}',
-            'start': {
-                'dateTime': start_time.isoformat(),
-                'timeZone': 'Asia/Taipei',
-            },
-            'end': {
-                'dateTime': end_time.isoformat(),
-                'timeZone': 'Asia/Taipei',
-            },
-            'reminders': {
-                'useDefault': False,
-                'overrides': [
-                    {'method': 'email', 'minutes': 24 * 60},
-                    {'method': 'popup', 'minutes': 60},
-                ],
-            },
-        }
-        
-        logger.info(f"準備創建預約: {json.dumps(event, ensure_ascii=False)}")
-        print(f"[LOG] 準備創建預約: {json.dumps(event, ensure_ascii=False)}")
-        
         try:
-            # 確認服務實例狀態
-            logger.info(f"Calendar service 狀態: {self.service._baseUrl}")
-            print(f"[LOG] Calendar service 狀態: {self.service._baseUrl}")
+            # 確保時間格式正確，帶有時區信息
+            start_iso = start_time.isoformat()
+            end_iso = end_time.isoformat()
             
-            # 創建預約
-            logger.info(f"開始調用 Google Calendar API 創建預約")
-            print(f"[LOG] 開始調用 Google Calendar API 創建預約")
-            created_event = self.service.events().insert(calendarId=self.calendar_id, body=event).execute()
-            logger.info(f"Google Calendar API 返回結果: {json.dumps(created_event, ensure_ascii=False)}")
-            print(f"[LOG] Google Calendar API 返回結果: {json.dumps(created_event, ensure_ascii=False)}")
+            logger.info(f"準備創建預約，開始時間: {start_iso}, 結束時間: {end_iso}")
+            print(f"[LOG] 準備創建預約，開始時間: {start_iso}, 結束時間: {end_iso}")
             
-            event_id = created_event.get('id')
-            event_link = created_event.get('htmlLink')
-            
-            # 確認預約已成功建立
-            if not event_id:
-                logger.error("無法獲取預約 ID，預約可能未成功建立")
-                print("[ERROR] 無法獲取預約 ID，預約可能未成功建立")
-                raise Exception("無法獲取預約 ID，預約可能未成功建立")
-            
-            # 驗證預約是否存在於行事曆中
-            logger.info(f"開始驗證預約 {event_id} 是否存在")
-            print(f"[LOG] 開始驗證預約 {event_id} 是否存在")
-            self.verify_event_created(event_id)
-            
-            logger.info(f"成功建立預約 - ID: {event_id}, 連結: {event_link}")
-            print(f"[LOG] 成功建立預約 - ID: {event_id}, 連結: {event_link}")
-            return {
-                'id': event_id,
-                'link': event_link,
-                'summary': created_event.get('summary'),
-                'start': created_event['start'].get('dateTime'),
-                'end': created_event['end'].get('dateTime')
+            event = {
+                'summary': f'{user_info["name"]} - {service}',
+                'description': f'客戶：{user_info["name"]}\n電話：{user_info["phone"]}\n服務：{service}',
+                'start': {
+                    'dateTime': start_iso,
+                    'timeZone': 'Asia/Taipei',
+                },
+                'end': {
+                    'dateTime': end_iso,
+                    'timeZone': 'Asia/Taipei',
+                },
+                'reminders': {
+                    'useDefault': False,
+                    'overrides': [
+                        {'method': 'email', 'minutes': 24 * 60},
+                        {'method': 'popup', 'minutes': 60},
+                    ],
+                },
             }
+            
+            logger.info(f"預約事件詳情: {json.dumps(event, ensure_ascii=False)}")
+            print(f"[LOG] 預約事件詳情: {json.dumps(event, ensure_ascii=False)}")
+            
+            # 檢查憑證和服務狀態
+            try:
+                # 檢查服務是否正確初始化
+                if not self.service:
+                    logger.error("Google Calendar 服務未初始化")
+                    print("[ERROR] Google Calendar 服務未初始化")
+                    raise Exception("Google Calendar 服務未初始化")
+                
+                logger.info(f"Calendar service 狀態: {self.service._baseUrl}")
+                print(f"[LOG] Calendar service 狀態: {self.service._baseUrl}")
+                
+                # 確認calendar_id是否設置
+                logger.info(f"使用行事曆ID: {self.calendar_id}")
+                print(f"[LOG] 使用行事曆ID: {self.calendar_id}")
+                
+                # 創建請求並執行
+                logger.info("開始構建API請求")
+                print("[LOG] 開始構建API請求")
+                request = self.service.events().insert(calendarId=self.calendar_id, body=event)
+                logger.info("API請求構建完成，準備執行")
+                print("[LOG] API請求構建完成，準備執行")
+                
+                # 執行API請求
+                created_event = request.execute()
+                logger.info(f"事件創建成功: {json.dumps(created_event, ensure_ascii=False)}")
+                print(f"[LOG] 事件創建成功: {json.dumps(created_event, ensure_ascii=False)}")
+                
+                event_id = created_event.get('id')
+                event_link = created_event.get('htmlLink')
+                
+                # 確認預約已成功建立
+                if not event_id:
+                    logger.error("無法獲取預約 ID，預約可能未成功建立")
+                    print("[ERROR] 無法獲取預約 ID，預約可能未成功建立")
+                    raise Exception("無法獲取預約 ID，預約可能未成功建立")
+                
+                logger.info(f"成功建立預約 - ID: {event_id}, 連結: {event_link}")
+                print(f"[LOG] 成功建立預約 - ID: {event_id}, 連結: {event_link}")
+                
+                # 返回成功結果
+                return {
+                    'id': event_id,
+                    'link': event_link,
+                    'summary': created_event.get('summary'),
+                    'start': created_event['start'].get('dateTime'),
+                    'end': created_event['end'].get('dateTime')
+                }
+                
+            except Exception as api_error:
+                # 處理API異常
+                error_detail = str(api_error)
+                logger.error(f"Google Calendar API 調用異常: {error_detail}")
+                print(f"[ERROR] Google Calendar API 調用異常: {error_detail}")
+                
+                # 導入並提取完整堆疊追蹤
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"堆疊追蹤:\n{tb}")
+                print(f"[ERROR] 堆疊追蹤:\n{tb}")
+                
+                # 檢查憑證問題
+                if 'credentials' in error_detail.lower() or 'unauthorized' in error_detail.lower():
+                    logger.error("發現憑證問題")
+                    print("[ERROR] 發現憑證問題")
+                    self._check_credentials()
+                
+                raise Exception(f"Google Calendar API 調用失敗: {error_detail}")
+                
         except Exception as e:
             error_detail = str(e)
-            logger.error(f"創建預約失敗: {error_detail}")
-            print(f"[ERROR] 創建預約失敗: {error_detail}")
-            
-            # 檢查是否為憑證問題
-            if 'credentials' in error_detail.lower():
-                logger.error("可能是 Google Calendar 憑證問題")
-                print("[ERROR] 可能是 Google Calendar 憑證問題，檢查憑證文件是否正確生成")
-                # 嘗試檢查憑證文件
-                try:
-                    cred_path = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
-                    if os.path.exists(cred_path):
-                        file_size = os.path.getsize(cred_path)
-                        logger.info(f"憑證文件存在，大小: {file_size} 字節")
-                        print(f"[LOG] 憑證文件存在，大小: {file_size} 字節")
-                    else:
-                        logger.error(f"憑證文件不存在: {cred_path}")
-                        print(f"[ERROR] 憑證文件不存在: {cred_path}")
-                except Exception as file_error:
-                    logger.error(f"檢查憑證文件時出錯: {str(file_error)}")
-                    print(f"[ERROR] 檢查憑證文件時出錯: {str(file_error)}")
-            
+            logger.error(f"創建預約過程中發生錯誤: {error_detail}")
+            print(f"[ERROR] 創建預約過程中發生錯誤: {error_detail}")
             raise Exception(f'創建預約失敗：{error_detail}')
+    
+    def _check_credentials(self):
+        """檢查憑證狀態"""
+        try:
+            cred_path = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
+            logger.info(f"檢查憑證路徑: {cred_path}")
+            print(f"[LOG] 檢查憑證路徑: {cred_path}")
             
+            if not cred_path:
+                logger.error("憑證環境變數未設置")
+                print("[ERROR] 憑證環境變數未設置")
+                return
+                
+            if os.path.exists(cred_path):
+                file_size = os.path.getsize(cred_path)
+                logger.info(f"憑證文件存在，大小: {file_size} 字節")
+                print(f"[LOG] 憑證文件存在，大小: {file_size} 字節")
+                
+                # 嘗試讀取憑證文件內容
+                try:
+                    with open(cred_path, 'r') as f:
+                        cred_content = f.read()
+                    if len(cred_content) < 100:
+                        logger.error(f"憑證文件內容可能不完整: {cred_content[:50]}...")
+                        print(f"[ERROR] 憑證文件內容可能不完整")
+                    else:
+                        logger.info(f"憑證文件讀取成功，內容長度: {len(cred_content)}")
+                        print(f"[LOG] 憑證文件讀取成功，內容長度: {len(cred_content)}")
+                except Exception as read_error:
+                    logger.error(f"讀取憑證文件失敗: {str(read_error)}")
+                    print(f"[ERROR] 讀取憑證文件失敗: {str(read_error)}")
+            else:
+                logger.error(f"憑證文件不存在: {cred_path}")
+                print(f"[ERROR] 憑證文件不存在: {cred_path}")
+                
+        except Exception as e:
+            logger.error(f"檢查憑證時出錯: {str(e)}")
+            print(f"[ERROR] 檢查憑證時出錯: {str(e)}")
+
     def verify_event_created(self, event_id):
         """驗證事件是否已成功建立在 Google Calendar 中"""
         try:
@@ -175,24 +235,146 @@ class GoogleCalendarService:
 
     def get_available_slots_by_date(self, date):
         """查詢指定日期的可用時段（10:00-20:00，每30分鐘）"""
-        date_start = datetime.strptime(date, "%Y-%m-%d").replace(hour=10, minute=0, second=0, microsecond=0)
-        date_end = date_start.replace(hour=20, minute=0)
-        events_result = self.service.events().list(
-            calendarId=self.calendar_id,
-            timeMin=date_start.isoformat() + 'Z',
-            timeMax=date_end.isoformat() + 'Z',
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        booked_slots = []
-        for event in events_result.get('items', []):
-            start = event['start'].get('dateTime')
-            if start:
-                booked_slots.append(datetime.fromisoformat(start.replace('Z', '+00:00')))
-        available_slots = []
-        current = date_start
-        while current < date_end:
-            if current not in booked_slots:
-                available_slots.append(current.strftime('%H:%M'))
-            current += timedelta(minutes=30)
-        return available_slots 
+        try:
+            date_start = datetime.strptime(date, "%Y-%m-%d").replace(hour=10, minute=0, second=0, microsecond=0)
+            date_end = date_start.replace(hour=20, minute=0)
+            
+            # 注意：將時區信息加入到ISO格式字符串中
+            timeMin = date_start.isoformat() + 'Z'
+            timeMax = date_end.isoformat() + 'Z'
+            
+            logger.info(f"查詢時間範圍: {timeMin} 到 {timeMax}")
+            print(f"[LOG] 查詢時間範圍: {timeMin} 到 {timeMax}")
+            
+            try:
+                logger.info(f"調用 Google Calendar API 列出事件")
+                print(f"[LOG] 調用 Google Calendar API 列出事件")
+                events_result = self.service.events().list(
+                    calendarId=self.calendar_id,
+                    timeMin=timeMin,
+                    timeMax=timeMax,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+                
+                logger.info(f"Google Calendar API 返回結果: {json.dumps(events_result.get('items', []), ensure_ascii=False)}")
+                print(f"[LOG] Google Calendar API 列出事件成功，找到 {len(events_result.get('items', []))} 個事件")
+            except Exception as api_error:
+                logger.error(f"調用 Google Calendar API 列出事件失敗: {str(api_error)}")
+                print(f"[ERROR] 調用 Google Calendar API 列出事件失敗: {str(api_error)}")
+                raise
+                
+            booked_slots = []
+            for event in events_result.get('items', []):
+                start = event['start'].get('dateTime')
+                if start:
+                    try:
+                        # 處理時區
+                        event_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                        booked_slots.append(event_time)
+                        logger.info(f"找到已預約時段: {event_time}")
+                        print(f"[LOG] 找到已預約時段: {event_time}")
+                    except Exception as time_error:
+                        logger.error(f"解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
+                        print(f"[ERROR] 解析事件時間失敗: {str(time_error)}, 原始時間字符串: {start}")
+            
+            available_slots = []
+            current = date_start
+            while current < date_end:
+                # 檢查當前時段是否已被預約
+                is_available = True
+                for booked in booked_slots:
+                    # 檢查當前時段是否與已預約時段重疊（考慮30分鐘間隔）
+                    if abs((current - booked).total_seconds()) < 60:  # 1分鐘寬容度
+                        is_available = False
+                        break
+                        
+                if is_available:
+                    slot = current.strftime('%H:%M')
+                    available_slots.append(slot)
+                
+                current += timedelta(minutes=30)
+            
+            logger.info(f"可用時段數量: {len(available_slots)}")
+            print(f"[LOG] 可用時段數量: {len(available_slots)}")
+            
+            return available_slots
+            
+        except Exception as e:
+            logger.error(f"獲取可用時段失敗: {str(e)}")
+            print(f"[ERROR] 獲取可用時段失敗: {str(e)}")
+            # 返回空列表而不是拋出異常，避免中斷對話流程
+            return []
+
+    def test_connection(self):
+        """測試Google Calendar API連接"""
+        try:
+            logger.info("開始測試Google Calendar API連接")
+            print("[LOG] 開始測試Google Calendar API連接")
+            
+            # 測試1: 獲取日曆列表
+            logger.info("嘗試獲取日曆列表")
+            print("[LOG] 嘗試獲取日曆列表")
+            calendar_list = self.service.calendarList().list().execute()
+            calendars = calendar_list.get('items', [])
+            
+            if calendars:
+                logger.info(f"成功獲取日曆列表，找到 {len(calendars)} 個日曆")
+                print(f"[LOG] 成功獲取日曆列表，找到 {len(calendars)} 個日曆")
+                for calendar in calendars:
+                    logger.info(f"日曆: {calendar.get('summary')} (ID: {calendar.get('id')})")
+                    print(f"[LOG] 日曆: {calendar.get('summary')} (ID: {calendar.get('id')})")
+            else:
+                logger.warning("未找到任何日曆")
+                print("[WARNING] 未找到任何日曆")
+            
+            # 測試2: 獲取主日曆信息
+            logger.info(f"嘗試獲取主日曆信息 (ID: {self.calendar_id})")
+            print(f"[LOG] 嘗試獲取主日曆信息 (ID: {self.calendar_id})")
+            primary_calendar = self.service.calendars().get(calendarId=self.calendar_id).execute()
+            logger.info(f"主日曆信息: {json.dumps(primary_calendar, ensure_ascii=False)}")
+            print(f"[LOG] 主日曆信息: {json.dumps(primary_calendar, ensure_ascii=False)}")
+            
+            # 測試3: 查詢近期事件
+            logger.info("嘗試查詢近期事件")
+            print("[LOG] 嘗試查詢近期事件")
+            now = datetime.utcnow().isoformat() + 'Z'
+            events_result = self.service.events().list(
+                calendarId=self.calendar_id,
+                timeMin=now,
+                maxResults=10,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            events = events_result.get('items', [])
+            
+            if events:
+                logger.info(f"成功獲取事件列表，找到 {len(events)} 個事件")
+                print(f"[LOG] 成功獲取事件列表，找到 {len(events)} 個事件")
+                for event in events:
+                    start = event['start'].get('dateTime', event['start'].get('date'))
+                    logger.info(f"事件: {event.get('summary')} (開始時間: {start})")
+                    print(f"[LOG] 事件: {event.get('summary')} (開始時間: {start})")
+            else:
+                logger.info("未找到近期事件")
+                print("[LOG] 未找到近期事件")
+            
+            logger.info("Google Calendar API連接測試完成，所有測試通過")
+            print("[LOG] Google Calendar API連接測試完成，所有測試通過")
+            return True
+            
+        except Exception as e:
+            error_detail = str(e)
+            logger.error(f"Google Calendar API連接測試失敗: {error_detail}")
+            print(f"[ERROR] Google Calendar API連接測試失敗: {error_detail}")
+            
+            # 詳細診斷
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"堆疊追蹤:\n{tb}")
+            print(f"[ERROR] 堆疊追蹤:\n{tb}")
+            
+            # 檢查憑證
+            self._check_credentials()
+            
+            return False 

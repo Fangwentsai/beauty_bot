@@ -703,6 +703,84 @@ def handle_message(event):
 def health_check():
     return 'OK'
 
+# 添加Google Calendar API測試端點
+@app.route("/test-calendar", methods=['GET'])
+def test_calendar_api():
+    try:
+        logger.info("開始測試Google Calendar API連接")
+        print("[LOG] 開始測試Google Calendar API連接")
+        
+        # 檢查憑證環境變數
+        credentials_path = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
+        if not credentials_path:
+            return {
+                'status': 'error',
+                'message': 'GOOGLE_CALENDAR_CREDENTIALS環境變數未設置'
+            }, 500
+            
+        logger.info(f"GOOGLE_CALENDAR_CREDENTIALS環境變數: {credentials_path}")
+        print(f"[LOG] GOOGLE_CALENDAR_CREDENTIALS環境變數: {credentials_path}")
+        
+        # 檢查憑證文件
+        if os.path.exists(credentials_path):
+            file_size = os.path.getsize(credentials_path)
+            logger.info(f"憑證文件存在，大小: {file_size} 字節")
+            print(f"[LOG] 憑證文件存在，大小: {file_size} 字節")
+        else:
+            return {
+                'status': 'error',
+                'message': f'憑證文件不存在: {credentials_path}'
+            }, 500
+        
+        # 執行API連接測試
+        connection_test = calendar_service.test_connection()
+        
+        if connection_test:
+            # 測試創建一個測試事件
+            logger.info("嘗試創建測試事件")
+            print("[LOG] 嘗試創建測試事件")
+            
+            # 創建明天的測試事件
+            from datetime import datetime, timedelta
+            start_dt = datetime.now() + timedelta(days=1)
+            start_dt = start_dt.replace(hour=10, minute=0, second=0, microsecond=0)
+            end_dt = start_dt + timedelta(hours=1)
+            
+            # 模擬用戶信息
+            test_user = {
+                'name': '測試用戶',
+                'phone': '0912345678'
+            }
+            
+            # 創建事件
+            test_event = calendar_service.create_booking(
+                start_dt, 
+                end_dt, 
+                test_user, 
+                '測試服務'
+            )
+            
+            return {
+                'status': 'success',
+                'message': 'Google Calendar API連接測試成功',
+                'test_event': test_event
+            }
+        else:
+            return {
+                'status': 'error',
+                'message': 'Google Calendar API連接測試失敗'
+            }, 500
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"測試Google Calendar API時發生錯誤: {error_msg}")
+        print(f"[ERROR] 測試Google Calendar API時發生錯誤: {error_msg}")
+        
+        return {
+            'status': 'error',
+            'message': f'測試發生錯誤: {error_msg}'
+        }, 500
+
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
