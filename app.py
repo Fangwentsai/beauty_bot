@@ -647,7 +647,7 @@ def handle_message(event):
                         logger.info("用戶狀態已重置，預約記錄已保存")
                         print("[LOG] 用戶狀態已重置，預約記錄已保存")
                         
-                        response = f"預約成功！🎉\n已幫您預約 {booking_date} {booking_time} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與您相見！\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
+                        response = f"預約成功！🎉\n已幫您預約 {booking_date} {booking_time} 的「{selected_service}」服務（{duration_hours}小時），期待在 Fanny Beauty 與您相見！\n\n🔔 我們將在預約前24小時、2小時和10分鐘發送提醒\n\n🗓️ 行事曆連結：{event_link}\n\n如需更改請隨時告訴我。"
                     except Exception as e:
                         error_msg = str(e)
                         logger.error(f"預約失敗: {error_msg}")
