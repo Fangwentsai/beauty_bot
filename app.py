@@ -17,8 +17,19 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 load_dotenv()
 
 # 設置日誌
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# 在本地开发环境中设置环境变量
+if not os.getenv('RENDER'):
+    logger.info("本地環境：設置默認憑證路徑")
+    print("[LOG] 本地環境：設置默認憑證路徑")
+    # 本地開發環境設置憑證路徑
+    os.environ['GOOGLE_CALENDAR_CREDENTIALS'] = 'credentials/google_calendar_credentials.json'
+    os.environ['FIREBASE_CREDENTIALS'] = 'credentials/firebase_credentials.json'
+else:
+    logger.info("Render環境：準備處理憑證")
+    print("[LOG] Render環境：準備處理憑證")
 
 # 服務項目及時長（小時）
 SERVICE_DURATIONS = {
@@ -192,11 +203,11 @@ handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 # 如果在 Render 環境中，將憑證寫入臨時文件
 if os.getenv('RENDER'):
     # Google Calendar 憑證
-    if os.getenv('GOOGLE_CALENDAR_CREDENTIALS'):
+    if os.getenv('GOOGLE_CALENDAR_CREDENTIALS_JSON'):
         try:
             logger.info("開始處理 Google Calendar 憑證")
             print("[LOG] 開始處理 Google Calendar 憑證")
-            calendar_creds_json = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
+            calendar_creds_json = os.getenv('GOOGLE_CALENDAR_CREDENTIALS_JSON')
             logger.info(f"憑證環境變數長度: {len(calendar_creds_json)}")
             print(f"[LOG] 憑證環境變數長度: {len(calendar_creds_json)}")
             
@@ -226,15 +237,15 @@ if os.getenv('RENDER'):
             logger.error(f"處理 Google Calendar 憑證時發生錯誤: {str(e)}")
             print(f"[ERROR] 處理 Google Calendar 憑證時發生錯誤: {str(e)}")
     else:
-        logger.error("GOOGLE_CALENDAR_CREDENTIALS 環境變數未設置")
-        print("[ERROR] GOOGLE_CALENDAR_CREDENTIALS 環境變數未設置")
+        logger.error("GOOGLE_CALENDAR_CREDENTIALS_JSON 環境變數未設置")
+        print("[ERROR] GOOGLE_CALENDAR_CREDENTIALS_JSON 環境變數未設置")
     
     # Firebase 憑證
-    if os.getenv('FIREBASE_CREDENTIALS'):
+    if os.getenv('FIREBASE_CREDENTIALS_JSON'):
         try:
             logger.info("開始處理 Firebase 憑證")
             print("[LOG] 開始處理 Firebase 憑證")
-            firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS')
+            firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
             firebase_creds = json.loads(firebase_creds_json)
             
             with open('firebase_credentials.json', 'w') as f:
@@ -253,8 +264,8 @@ if os.getenv('RENDER'):
             logger.error(f"處理 Firebase 憑證時發生錯誤: {str(e)}")
             print(f"[ERROR] 處理 Firebase 憑證時發生錯誤: {str(e)}")
     else:
-        logger.error("FIREBASE_CREDENTIALS 環境變數未設置")
-        print("[ERROR] FIREBASE_CREDENTIALS 環境變數未設置")
+        logger.error("FIREBASE_CREDENTIALS_JSON 環境變數未設置")
+        print("[ERROR] FIREBASE_CREDENTIALS_JSON 環境變數未設置")
 
 # 初始化服務
 chatgpt_service = ChatGPTService()

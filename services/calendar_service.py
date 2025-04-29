@@ -12,9 +12,23 @@ class GoogleCalendarService:
     def __init__(self):
         SCOPES = ['https://www.googleapis.com/auth/calendar']
         try:
+            # 获取凭证路径
             creds_path = os.getenv('GOOGLE_CALENDAR_CREDENTIALS')
             logger.info(f"使用憑證路徑: {creds_path}")
             print(f"[LOG] 初始化 GoogleCalendarService 使用憑證路徑: {creds_path}")
+            
+            # 检查路径是否存在
+            if not creds_path or not os.path.exists(creds_path):
+                default_path = 'credentials/google_calendar_credentials.json'
+                logger.info(f"找不到憑證文件或環境變數未設置，嘗試默認路徑: {default_path}")
+                print(f"[LOG] 找不到憑證文件或環境變數未設置，嘗試默認路徑: {default_path}")
+                
+                if os.path.exists(default_path):
+                    creds_path = default_path
+                else:
+                    raise Exception(f"找不到有效的Google Calendar憑證文件，請確保設置正確的環境變數或提供憑證文件")
+            
+            # 建立凭证
             creds = service_account.Credentials.from_service_account_file(
                 creds_path,
                 scopes=SCOPES

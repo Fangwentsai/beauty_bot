@@ -3,30 +3,60 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FirebaseService:
     def __init__(self):
-        # 如果在 Render 環境中，使用環境變數中的憑證
-        if os.getenv('RENDER'):
-            cred = credentials.Certificate('firebase_credentials.json')
-        else:
-            # 本地開發環境使用憑證文件
-            cred = credentials.Certificate(os.getenv('FIREBASE_CREDENTIALS'))
-        
-        # Firebase 配置
-        firebase_config = {
-            "apiKey": "AIzaSyDRTa5Lnx-gSLPk9dlKXZPT4d9mvbIUQLw",
-            "authDomain": "linebot-jesse14.firebaseapp.com",
-            "projectId": "linebot-jesse14",
-            "storageBucket": "linebot-jesse14.firebasestorage.app",
-            "messagingSenderId": "630467005873",
-            "appId": "1:630467005873:web:23be48fadff9fa60404190",
-            "measurementId": "G-5E4GNXWDR6"
-        }
-        
-        # 初始化 Firebase
-        firebase_admin.initialize_app(cred, firebase_config)
-        self.db = firestore.client()
+        try:
+            # 如果在 Render 環境中，使用環境變數中的憑證
+            if os.getenv('RENDER'):
+                logger.info("在Render環境中使用firebase_credentials.json文件")
+                print("[LOG] 在Render環境中使用firebase_credentials.json文件")
+                cred = credentials.Certificate('firebase_credentials.json')
+            else:
+                # 本地開發環境使用憑證文件
+                cred_path = os.getenv('FIREBASE_CREDENTIALS')
+                logger.info(f"在本地環境中使用憑證路徑: {cred_path}")
+                print(f"[LOG] 在本地環境中使用憑證路徑: {cred_path}")
+                
+                if not cred_path or not os.path.exists(cred_path):
+                    default_path = 'credentials/firebase_credentials.json'
+                    logger.info(f"找不到憑證文件或環境變數未設置，使用默認路徑: {default_path}")
+                    print(f"[LOG] 找不到憑證文件或環境變數未設置，使用默認路徑: {default_path}")
+                    cred_path = default_path
+                
+                cred = credentials.Certificate(cred_path)
+            
+            # Firebase 配置
+            firebase_config = {
+                "apiKey": "AIzaSyDRTa5Lnx-gSLPk9dlKXZPT4d9mvbIUQLw",
+                "authDomain": "linebot-jesse14.firebaseapp.com",
+                "projectId": "linebot-jesse14",
+                "storageBucket": "linebot-jesse14.firebasestorage.app",
+                "messagingSenderId": "630467005873",
+                "appId": "1:630467005873:web:23be48fadff9fa60404190",
+                "measurementId": "G-5E4GNXWDR6"
+            }
+            
+            # 初始化 Firebase
+            try:
+                firebase_admin.initialize_app(cred, firebase_config)
+                logger.info("Firebase初始化成功")
+                print("[LOG] Firebase初始化成功")
+            except ValueError as e:
+                # 應用已經初始化，可以忽略
+                logger.info(f"Firebase已初始化: {str(e)}")
+                print(f"[LOG] Firebase已初始化: {str(e)}")
+            
+            self.db = firestore.client()
+            logger.info("Firestore客戶端創建成功")
+            print("[LOG] Firestore客戶端創建成功")
+        except Exception as e:
+            logger.error(f"初始化Firebase服務失敗: {str(e)}")
+            print(f"[ERROR] 初始化Firebase服務失敗: {str(e)}")
+            raise
 
     def get_user(self, user_id):
         """獲取用戶資訊"""
